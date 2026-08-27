@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Device, Telemetry
 from app.schemas.telemetry import TelemetryCreate
 from app.services.device_service import device_service
+from app.engines.ai_anomaly import ai_anomaly_engine
 
 
 class TelemetryService:
@@ -35,6 +36,9 @@ class TelemetryService:
         Automatically updates device last_seen_at timestamp and online status.
         """
         device = device_service.ensure_device_exists(db, data.device_id)
+
+        if anomaly_score is None:
+            anomaly_score = ai_anomaly_engine.compute_anomaly_score(data)
 
         reading_time = data.timestamp or datetime.now(timezone.utc)
         if reading_time.tzinfo is None:
