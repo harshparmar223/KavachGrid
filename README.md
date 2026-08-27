@@ -2,97 +2,170 @@
 
 ### AI-Powered Energy Theft, Anomaly Detection, Risk Ranking & Progressive Localization System
 
-> **An Investigation Support System** that prioritizes inspections using multiple evidence signals.
-> This system does NOT claim to automatically prove theft.
+> **An Investigation Support System** that prioritizes inspections using multiple evidence signals.  
+> *This system supports utility engineers with explainable, data-driven evidence ranking — it does NOT make unverified automated theft accusations.*
 
 ---
 
 ## 🎯 Overview
 
-KAVACHGRID 3.0 is a complete end-to-end smart grid monitoring platform designed for the **Smart India Hackathon (SIH)**. It detects unexplained energy losses, abnormal consumption patterns, meter tampering indicators, and communication failures — then generates **explainable risk scores** to help utility operators prioritize field inspections.
+**KAVACHGRID 3.0** is an end-to-end smart grid monitoring and theft investigation support platform developed for the **Smart India Hackathon (SIH 2026)**. It detects unaccounted energy losses, consumption anomalies, meter tampering indicators, and communication degradation across distribution segments — computing **composite, explainable risk scores (0–100)** to help utility operators prioritize physical field inspections.
 
-## 🏗️ Architecture
+---
+
+## 🏗️ System Architecture
 
 ```
-ESP32 + Sensors → MQTT Broker → FastAPI Backend → PostgreSQL
-                                      ↓
-                              Analytics Engine
-                                      ↓
-                                 AI Engine
-                                      ↓
-                                Risk Engine
-                                      ↓
-                                Dashboard
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           FIELD LAYER (ESP32)                           │
+│  Feeder Node (INA226)    Consumer Meters (INA219)   Localization Nodes  │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │ MQTT over TLS (Port 8883/1883)
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        COMMUNICATION & INGESTION                        │
+│                   Mosquitto Broker (Topic ACLs & TLS)                   │
+│                                    │                                    │
+│                 FastAPI Async MQTT Subscriber (aiomqtt)                 │
+│                                    │                                    │
+│                   Topic Validation & Schema Decoder                     │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                             BACKEND & DATA                              │
+│                    PostgreSQL 15 (Time-Series Data)                     │
+│                                    │                                    │
+│                 6 Analytics Engines (AI + Rules + Trust)                │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │ REST & WebSockets
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         PRESENTATION DASHBOARD                          │
+│               Next.js 14 • MUI Dark Theme • Recharts • Leaflet          │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 📡 MQTT Topic Hierarchy
+
+The communication layer follows a strict topic structure with topic validation and payload verification:
+
+| Topic Pattern | Source Node | Purpose |
+|---|---|---|
+| `kavachgrid/feeder` | Feeder Node (ESP32 + INA226) | Total distribution transformer power & energy |
+| `kavachgrid/feeder/{device_id}` | Named Feeder | Specific feeder segment readings |
+| `kavachgrid/meter/{meter_id}` | Consumer Meter (ESP32 + INA219) | Household voltage, current, power, energy |
+| `kavachgrid/localization/{zone_id}` | Localization Sensor (CT Clamp) | Branch/pole-level current for suspect ranking |
+| `kavachgrid/alerts` | Edge & Backend Engines | Real-time threshold violations & tampering alarms |
+| `kavachgrid/commands/{device_id}` | Backend / Dashboard | Remote node configuration & query commands |
+
+---
 
 ## 🔧 Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| **Hardware** | ESP32, INA219/INA226 sensors |
-| **Communication** | MQTT (Mosquitto) with TLS |
-| **Backend** | Python, FastAPI, SQLAlchemy, Pydantic |
-| **Database** | PostgreSQL |
-| **AI/ML** | TensorFlow, Keras, Scikit-Learn |
-| **Frontend** | Next.js, TypeScript, Material UI, Recharts, Leaflet.js |
-| **Deployment** | Docker, Docker Compose |
+|---|---|
+| **Field Devices** | ESP32, INA219, INA226, Current Transformer (CT) sensors, Embedded C++ |
+| **Broker** | Eclipse Mosquitto (TLS 1.3, Topic-level ACLs, WebSockets) |
+| **Backend** | Python 3.11+, FastAPI, `aiomqtt`, SQLAlchemy 2.0, Pydantic V2 |
+| **Database** | PostgreSQL 15 |
+| **AI / ML** | TensorFlow / Keras (Autoencoder Anomaly Detection), Scikit-Learn |
+| **Frontend** | Next.js 14 (TypeScript), Material UI, Recharts, Leaflet.js |
+| **DevOps** | Docker, Docker Compose, GitHub Actions |
+
+---
 
 ## 📦 Project Structure
 
 ```
-KavachAI/
-├── firmware/          # ESP32 embedded code (C++)
-├── mqtt/              # Mosquitto broker configuration
-├── backend/           # FastAPI backend + analytics engines
-├── ai/                # AI/ML training & inference pipeline
+KavachGrid/
+├── ai/                # Autoencoder ML models & training pipelines
+├── backend/           # FastAPI backend
+│   ├── app/
+│   │   ├── api/       # REST API route handlers
+│   │   ├── db/        # SQLAlchemy PostgreSQL models & database engine
+│   │   ├── engines/   # 6 Analytics engines (Energy Balance, Risk, etc.)
+│   │   ├── mqtt/      # Async MQTT client, topics, and message handlers
+│   │   ├── schemas/   # Pydantic validation models
+│   │   ├── services/  # Business logic & DB ingestion pipelines
+│   │   └── config.py  # Centralized environment settings
+│   ├── tests/         # Pytest automated test suite
+│   │   └── test_mqtt/ # Comprehensive MQTT unit & integration tests
+│   └── requirements.txt
 ├── dashboard/         # Next.js frontend dashboard
-├── simulator/         # Software-based node simulator
-├── scripts/           # Demo & utility scripts
-└── docs/              # Project documentation
+├── docs/              # System architecture, database, API specifications
+├── firmware/          # ESP32 firmware for Feeder, Consumer, and Localization nodes
+├── mqtt/              # Mosquitto broker config, ACLs, and TLS certs
+├── scripts/           # Demo scenarios, seed scripts, cert generators
+├── simulator/         # Software-based grid node simulator
+└── docker-compose.yml # Multi-container deployment specification
 ```
 
-## 🚀 Quick Start
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- Docker & Docker Compose
-- Python 3.11+
-- Node.js 18+
-- Arduino IDE (for firmware flashing)
+- **Python**: 3.11 or higher
+- **Node.js**: 18+ & npm
+- **Docker & Docker Compose** (optional for containerized setup)
+- **PostgreSQL 15** & **Mosquitto MQTT Broker**
 
-### One-Command Launch
+### 1. Environment Setup
 ```bash
-docker-compose up --build
+# Clone the repository
+git clone https://github.com/lavleshydv/KavachGrid.git
+cd KavachGrid
+
+# Copy environment configuration
+cp .env.example .env
 ```
 
-### Access Points
-| Service | URL |
-|---------|-----|
-| Dashboard | http://localhost:3000 |
-| API Docs | http://localhost:8000/docs |
-| MQTT Broker | mqtt://localhost:1883 |
-
-## 🧪 Demo Mode
-
-Run the software simulator for SIH demonstrations (no hardware needed):
+### 2. Backend Setup
 ```bash
-python scripts/demo_scenarios.py
+cd backend
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the FastAPI server
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## 🔐 Key Features
+### 3. Run Automated Tests
+```bash
+cd backend
+pytest tests -v
+```
 
-- **Energy Balance Monitoring** — Detects unaccounted energy losses
-- **AI Anomaly Detection** — Autoencoder-based consumption pattern analysis
-- **Meter Health Scoring** — Detects stuck readings, sensor drift, communication failures
-- **Device Trust Validation** — Zero Trust-inspired payload verification
-- **KAVACH Risk Engine** — Weighted composite scoring (0-100)
-- **Progressive Localization** — Narrows investigation areas with confidence scoring
-- **Real-time Dashboard** — Live monitoring with WebSocket updates
-- **GIS Visualization** — Risk-mapped geographic view
+---
+
+## 🔐 Key Capabilities
+
+- **⚡ Real-Time Energy Balancing** — Calculates instantaneous and aggregated unaccounted losses ($P_{\text{feeder}} - \sum P_{\text{consumers}}$).
+- **🤖 AI Anomaly Detection** — Unsupervised autoencoder flags unusual power factor, load-shifting, and current anomalies.
+- **🩺 Meter Health Engine** — Identifies sensor drift, frozen readings, impossible negative values, and communication drops.
+- **🛡️ Zero-Trust Device Validation** — Rejects spoofed topics, mismatched payloads, and unauthorized device IDs.
+- **🎯 KAVACH Risk Engine** — Calculates a weighted composite score ($0-100$) and categorizes risk into `Low`, `Medium`, `High`, and `Critical`.
+- **📍 Progressive Localization** — Pinpoints high-loss distribution branches to narrow physical inspection zones.
+
+---
+
+## 👥 Team KAVACH (SIH 2026)
+
+| Name | Role | Focus Area |
+|---|---|---|
+| **Lavlesh** | Backend & Database Engineer | FastAPI, MQTT Ingestion, PostgreSQL, Services |
+| **Yash Sharma** | Team Lead / AI & Backend | System Architecture, Risk Engine, Energy Balance |
+| **Harsh Parmar** | Hardware & Firmware Engineer | ESP32, Embedded C++, Mosquitto & TLS, Edge Analytics |
+| **Abhishek Shrivastava** | AI/ML Engineer | Autoencoders, Anomaly Detection, Synthetic Dataset |
+| **Nitin Rajak** | Frontend & Design Engineer | Next.js Dashboard, Risk Monitoring UI, Components |
+| **Adya** | Frontend & Design Engineer | GIS Map Integration, Progressive Localization UI |
+
+---
 
 ## 📄 License
 
-This project is developed for SIH 2026. All rights reserved.
-
-## 👥 Team
-
-**Team KAVACH** — Smart India Hackathon 2026
+Developed for the Smart India Hackathon 2026. All rights reserved.

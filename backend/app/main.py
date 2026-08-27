@@ -6,7 +6,7 @@ This is the main application file that:
 - Registers all API routers
 - Sets up CORS middleware
 - Initializes the database on startup
-- Handles graceful shutdown
+- Handles graceful shutdown & MQTT background client
 """
 
 from contextlib import asynccontextmanager
@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db.database import init_db
+from app.mqtt import mqtt_client, start_mqtt_client, stop_mqtt_client
 
 
 @asynccontextmanager
@@ -36,13 +37,23 @@ async def lifespan(app: FastAPI):
         print(f"⚠️  Database initialization warning: {e}")
         print("   (This is normal if PostgreSQL is not running yet)")
 
-    # TODO Phase 3: Start MQTT subscriber
+    # Phase 3: Start async MQTT subscriber client in background
+    try:
+        await start_mqtt_client(app)
+        print("✅ MQTT background subscriber started")
+    except Exception as e:
+        print(f"⚠️  MQTT background subscriber failed to start: {e}")
 
     yield
 
     # ---- Shutdown ----
     print("🛑 KAVACHGRID 3.0 Backend shutting down...")
-    # TODO Phase 3: Stop MQTT subscriber
+    # Phase 3: Stop MQTT subscriber
+    try:
+        await stop_mqtt_client(app)
+        print("✅ MQTT subscriber stopped gracefully")
+    except Exception as e:
+        print(f"⚠️  Error stopping MQTT subscriber: {e}")
 
 
 app = FastAPI(
@@ -90,14 +101,9 @@ async def health_check():
     return {
         "status": "healthy",
         "services": {
-            "database": "connected",   # Phase 2 ✅
-            "mqtt": "pending",          # Phase 3
+            "database": "connected",
+            "mqtt": mqtt_client.status_summary,
             "ai_engine": "pending",     # Phase 8
             "risk_engine": "pending",   # Phase 10
         },
     }
-
-
-# TODO Phase 5: Register API routers
-# from app.api.router import api_router
-# app.include_router(api_router, prefix="/api/v1")

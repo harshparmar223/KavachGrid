@@ -5,11 +5,17 @@ Centralized settings management using pydantic-settings.
 All settings are loaded from environment variables or .env file.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # ---------- PostgreSQL ----------
     POSTGRES_HOST: str = "localhost"
@@ -51,10 +57,6 @@ class Settings(BaseSettings):
     METER_HEALTH_WEIGHT: float = 0.20
     DEVICE_TRUST_WEIGHT: float = 0.15
     COMM_RELIABILITY_WEIGHT: float = 0.10
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 settings = Settings()
