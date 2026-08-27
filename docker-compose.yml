@@ -1,0 +1,91 @@
+# ============================================
+# KAVACHGRID 3.0 — Docker Compose
+# One-command deployment: docker-compose up --build
+# ============================================
+
+version: "3.9"
+
+services:
+  # ----------------------------------------
+  # PostgreSQL Database
+  # ----------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: kavachgrid-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kavachgrid}
+      POSTGRES_USER: ${POSTGRES_USER:-kavach_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kavach_admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------
+  # Mosquitto MQTT Broker
+  # ----------------------------------------
+  mqtt:
+    build:
+      context: ./mqtt
+      dockerfile: Dockerfile
+    container_name: kavachgrid-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"      # MQTT
+      - "8883:8883"      # MQTT over TLS
+      - "9001:9001"      # WebSocket (for dashboard)
+    volumes:
+      - mqtt-data:/mosquitto/data
+      - mqtt-log:/mosquitto/log
+
+  # ----------------------------------------
+  # FastAPI Backend
+  # ----------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kavachgrid-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+    volumes:
+      - ./ai/models:/app/ai/models:ro
+
+  # ----------------------------------------
+  # Next.js Dashboard
+  # ----------------------------------------
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: kavachgrid-dashboard
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000/ws}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+    driver: local
+  mqtt-data:
+    driver: local
+  mqtt-log:
+    driver: local

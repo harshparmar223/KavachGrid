@@ -1,0 +1,76 @@
+# ============================================
+# KAVACHGRID 3.0 — .gitignore
+# ============================================
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.so
+.venv/
+venv/
+env/
+.env
+*.env.local
+
+# ---------- Node.js ----------
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---------- AI/ML ----------
+ai/data/raw/*
+ai/data/processed/*
+ai/data/synthetic/*
+ai/models/*.h5
+ai/models/*.keras
+ai/models/*.pkl
+!ai/data/raw/.gitkeep
+!ai/data/processed/.gitkeep
+!ai/data/synthetic/.gitkeep
+!ai/models/.gitkeep
+
+# ---------- TLS Certificates ----------
+mqtt/certs/*.crt
+mqtt/certs/*.key
+mqtt/certs/*.pem
+!mqtt/certs/.gitkeep
+
+# ---------- MQTT Secrets ----------
+mqtt/passwd
+
+# ---------- PostgreSQL ----------
+pgdata/
+
+# ---------- Docker ----------
+*.log
+
+# ---------- IDE ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---------- Testing ----------
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# ---------- Arduino ----------
+firmware/**/*.elf
+firmware/**/*.bin
+firmware/**/build/

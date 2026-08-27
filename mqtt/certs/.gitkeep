@@ -1,0 +1,3 @@
+# TLS certificates will be generated here
+# Run: scripts/generate_certs.sh
+# Files: ca.crt, server.crt, server.key
