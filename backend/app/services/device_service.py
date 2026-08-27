@@ -7,6 +7,7 @@ Provides database operations for registered IoT nodes:
     - Device auto-registration / existence guarantee
     - Online/Offline status and last_seen updates
     - Device queries by type and zone
+    - Full CRUD operations for API routes (Phase 5)
 """
 
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.db.models import Device
+from app.schemas.device import DeviceCreate, DeviceUpdate
 
 
 class DeviceService:
@@ -117,5 +119,71 @@ class DeviceService:
             query = query.filter(Device.zone_id == zone_id)
         return query.order_by(Device.device_id.asc()).all()
 
+    # ============================================
+    # Phase 5: Full CRUD for API routes
+    # ============================================
+
+    @staticmethod
+    def create_device(db: Session, data: DeviceCreate) -> Device:
+        """
+        Explicitly register a new device via the API.
+        Auto-generates a secure API key for the device.
+        """
+        now = datetime.now(timezone.utc)
+        device = Device(
+            device_id=data.device_id,
+            device_type=data.device_type,
+            name=data.name,
+            location=data.location,
+            latitude=data.latitude,
+            longitude=data.longitude,
+            api_key=secrets.token_urlsafe(32),
+            status="offline",
+            zone_id=data.zone_id,
+            device_metadata=data.metadata,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(device)
+        db.commit()
+        db.refresh(device)
+        return device
+
+    @staticmethod
+    def update_device(
+        db: Session, device_id: str, data: DeviceUpdate
+    ) -> Optional[Device]:
+        """Partially update a device's mutable fields."""
+        device = DeviceService.get_by_device_id(db, device_id)
+        if not device:
+            return None
+
+        update_data = data.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            if field == "metadata":
+                setattr(device, "device_metadata", value)
+            else:
+                setattr(device, field, value)
+
+        device.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(device)
+        return device
+
+    @staticmethod
+    def delete_device(db: Session, device_id: str) -> bool:
+        """
+        Hard-delete a device and cascade to telemetry/risk_scores.
+        Returns True if deleted, False if not found.
+        """
+        device = DeviceService.get_by_device_id(db, device_id)
+        if not device:
+            return False
+
+        db.delete(device)
+        db.commit()
+        return True
+
 
 device_service = DeviceService()
+

@@ -17,6 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.database import init_db
 from app.mqtt import mqtt_client, start_mqtt_client, stop_mqtt_client
+from app.api.router import api_router
+from app.api.websocket import router as websocket_router
 
 
 @asynccontextmanager
@@ -82,6 +84,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---- Phase 5: Register API routes ----
+app.include_router(api_router)
+app.include_router(websocket_router)
 
 
 @app.get("/", tags=["Health"])

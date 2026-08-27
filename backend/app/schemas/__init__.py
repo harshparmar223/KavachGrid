@@ -41,6 +41,10 @@ from app.schemas.localization import (
     LocalizationUpdate,
     SuspectDevice,
 )
+from app.schemas.token import (
+    Token,
+    TokenPayload,
+)
 
 __all__ = [
     # Users
@@ -72,4 +76,7 @@ __all__ = [
     "LocalizationUpdate",
     "LocalizationResponse",
     "SuspectDevice",
+    # Auth Tokens
+    "Token",
+    "TokenPayload",
 ]
