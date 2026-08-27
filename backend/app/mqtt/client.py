@@ -16,7 +16,12 @@ import json
 import logging
 from typing import Any, Dict, Optional, Union
 
-import aiomqtt
+try:
+    import aiomqtt
+    AIOMQTT_AVAILABLE = True
+except ImportError:
+    aiomqtt = None
+    AIOMQTT_AVAILABLE = False
 from fastapi import FastAPI
 
 from app.config import settings
@@ -125,6 +130,10 @@ class KavachMQTTClient:
         else:
             payload_str = str(payload)
 
+        if not AIOMQTT_AVAILABLE:
+            logger.warning("aiomqtt library not installed; cannot publish message.")
+            return False
+
         try:
             client_kwargs = {
                 "hostname": self.host,
@@ -149,6 +158,10 @@ class KavachMQTTClient:
         """
         Continuous subscription loop with exponential backoff on connection errors.
         """
+        if not AIOMQTT_AVAILABLE:
+            logger.warning("aiomqtt library not installed; MQTT subscriber loop disabled.")
+            return
+
         backoff = 1.0
         max_backoff = 30.0
 
