@@ -140,6 +140,19 @@ cd backend
 pytest tests -v
 ```
 
+### 4. Firmware Setup (ESP32)
+The project includes Arduino core firmware for three types of nodes:
+- **Feeder Node (`firmware/feeder_node/feeder_node.ino`)**: ESP32 + INA226 (I2C)
+- **Consumer Node (`firmware/consumer_node/consumer_node.ino`)**: ESP32 + INA219 (I2C)
+- **Localization Node (`firmware/localization_node/localization_node.ino`)**: ESP32 + CT Clamp (ADC)
+
+To deploy:
+1. Open the `.ino` files in Arduino IDE or PlatformIO.
+2. Install required libraries: `WiFi`, `PubSubClient`, `ArduinoJson`, `Adafruit_INA219`, `Adafruit_INA226`, and `EmonLib`.
+3. Update `YOUR_WIFI_SSID` and `YOUR_WIFI_PASSWORD`.
+4. Flash to the respective ESP32 boards.
+*Refer to the `wiring_diagram.md` in each node's folder for hardware assembly instructions.*
+
 ---
 
 ## 🔐 Key Capabilities
