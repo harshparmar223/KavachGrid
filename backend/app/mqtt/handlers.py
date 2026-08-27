@@ -37,6 +37,7 @@ from app.schemas.telemetry import TelemetryCreate
 from app.services.alert_service import alert_service
 from app.services.device_service import device_service
 from app.services.telemetry_service import telemetry_service
+from app.engines.device_trust import device_trust_engine
 
 logger = logging.getLogger("kavachgrid.mqtt.handlers")
 
@@ -142,17 +143,26 @@ def handle_feeder_telemetry(
     )
 
     schema = TelemetryCreate(**normalized)
-    telemetry = telemetry_service.ingest_telemetry(db, schema, raw_payload=raw_payload)
+    trust_score = device_trust_engine.calculate_trust_score(
+        db,
+        device_id=normalized["device_id"],
+        topic=topic_info.topic,
+        raw_payload=raw_payload,
+    )
+    telemetry = telemetry_service.ingest_telemetry(
+        db, schema, raw_payload=raw_payload, trust_score=trust_score
+    )
 
     logger.info(
         f"⚡ Feeder telemetry ingested: {telemetry.device_id} | "
-        f"V={telemetry.voltage:.1f}V | I={telemetry.current:.2f}A | P={telemetry.power:.1f}W"
+        f"V={telemetry.voltage:.1f}V | I={telemetry.current:.2f}A | P={telemetry.power:.1f}W | Trust={telemetry.trust_score}"
     )
     return {
         "status": "success",
         "type": "feeder_telemetry",
         "device_id": telemetry.device_id,
         "id": str(telemetry.id),
+        "trust_score": telemetry.trust_score,
         "timestamp": telemetry.timestamp.isoformat(),
     }
 
@@ -175,17 +185,26 @@ def handle_consumer_telemetry(
     )
 
     schema = TelemetryCreate(**normalized)
-    telemetry = telemetry_service.ingest_telemetry(db, schema, raw_payload=raw_payload)
+    trust_score = device_trust_engine.calculate_trust_score(
+        db,
+        device_id=normalized["device_id"],
+        topic=topic_info.topic,
+        raw_payload=raw_payload,
+    )
+    telemetry = telemetry_service.ingest_telemetry(
+        db, schema, raw_payload=raw_payload, trust_score=trust_score
+    )
 
     logger.info(
         f"🏠 Consumer telemetry ingested: {telemetry.device_id} | "
-        f"V={telemetry.voltage:.1f}V | I={telemetry.current:.2f}A | P={telemetry.power:.1f}W"
+        f"V={telemetry.voltage:.1f}V | I={telemetry.current:.2f}A | P={telemetry.power:.1f}W | Trust={telemetry.trust_score}"
     )
     return {
         "status": "success",
         "type": "consumer_telemetry",
         "device_id": telemetry.device_id,
         "id": str(telemetry.id),
+        "trust_score": telemetry.trust_score,
         "timestamp": telemetry.timestamp.isoformat(),
     }
 
@@ -209,17 +228,26 @@ def handle_localization_telemetry(
     )
 
     schema = TelemetryCreate(**normalized)
-    telemetry = telemetry_service.ingest_telemetry(db, schema, raw_payload=raw_payload)
+    trust_score = device_trust_engine.calculate_trust_score(
+        db,
+        device_id=normalized["device_id"],
+        topic=topic_info.topic,
+        raw_payload=raw_payload,
+    )
+    telemetry = telemetry_service.ingest_telemetry(
+        db, schema, raw_payload=raw_payload, trust_score=trust_score
+    )
 
     logger.info(
         f"📍 Localization telemetry ingested: {telemetry.device_id} (Zone {zone_id}) | "
-        f"I={telemetry.current:.2f}A | P={telemetry.power:.1f}W"
+        f"I={telemetry.current:.2f}A | P={telemetry.power:.1f}W | Trust={telemetry.trust_score}"
     )
     return {
         "status": "success",
         "type": "localization_telemetry",
         "device_id": telemetry.device_id,
         "zone_id": zone_id,
+        "trust_score": telemetry.trust_score,
         "id": str(telemetry.id),
     }
 

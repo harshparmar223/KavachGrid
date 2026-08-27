@@ -10,3 +10,15 @@ Engines:
 - risk_engine.py      — Phase 10: Composite risk scoring (0-100)
 - localization.py     — Phase 11: Progressive localization
 """
+
+from app.engines.ai_anomaly import AIAnomalyEngine, ai_anomaly_engine
+from app.engines.device_trust import DeviceTrustEngine, device_trust_engine
+from app.engines.meter_health import MeterHealthEngine
+
+__all__ = [
+    "AIAnomalyEngine",
+    "ai_anomaly_engine",
+    "DeviceTrustEngine",
+    "device_trust_engine",
+    "MeterHealthEngine",
+]
