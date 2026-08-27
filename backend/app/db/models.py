@@ -111,7 +111,7 @@ class Device(Base):
     api_key = Column(String(255), nullable=False)
     status = Column(String(20), nullable=False, default="offline")
     zone_id = Column(String(50), nullable=True, index=True)
-    metadata = Column(JSONB, nullable=True)
+    device_metadata = Column("metadata", JSONB, nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )

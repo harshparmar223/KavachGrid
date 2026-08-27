@@ -94,7 +94,7 @@ def seed_devices(db: Session) -> None:
             api_key=generate_api_key(),
             status="offline",
             zone_id="ZONE-A",
-            metadata={
+            device_metadata={
                 "hardware": "ESP32 + INA226",
                 "firmware_version": "3.0.0",
                 "max_current": 30.0,
@@ -112,7 +112,7 @@ def seed_devices(db: Session) -> None:
             api_key=generate_api_key(),
             status="offline",
             zone_id="ZONE-A",
-            metadata={
+            device_metadata={
                 "hardware": "ESP32 + INA219",
                 "firmware_version": "3.0.0",
                 "max_current": 15.0,
@@ -129,7 +129,7 @@ def seed_devices(db: Session) -> None:
             api_key=generate_api_key(),
             status="offline",
             zone_id="ZONE-A",
-            metadata={
+            device_metadata={
                 "hardware": "ESP32 + INA219",
                 "firmware_version": "3.0.0",
                 "max_current": 15.0,
@@ -146,7 +146,7 @@ def seed_devices(db: Session) -> None:
             api_key=generate_api_key(),
             status="offline",
             zone_id="ZONE-A",
-            metadata={
+            device_metadata={
                 "hardware": "ESP32 + INA219",
                 "firmware_version": "3.0.0",
                 "max_current": 15.0,
@@ -163,7 +163,7 @@ def seed_devices(db: Session) -> None:
             api_key=generate_api_key(),
             status="offline",
             zone_id="ZONE-A",
-            metadata={
+            device_metadata={
                 "hardware": "ESP32 + INA219",
                 "firmware_version": "3.0.0",
                 "max_current": 15.0,
@@ -181,7 +181,7 @@ def seed_devices(db: Session) -> None:
             api_key=generate_api_key(),
             status="offline",
             zone_id="ZONE-A",
-            metadata={
+            device_metadata={
                 "hardware": "ESP32 + CT Clamp",
                 "firmware_version": "3.0.0",
                 "ct_ratio": 100,
