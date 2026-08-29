@@ -1,2 +1,101 @@
 // KAVACHGRID 3.0 — Metric Card. Phase 12.
-export default function MetricCard() { return null; }
+'use client';
+
+import React from 'react';
+import { Card, CardContent, Typography, Box } from '@mui/material';
+import { ArrowUpward as ArrowUpIcon, ArrowDownward as ArrowDownIcon } from '@mui/icons-material';
+import { themeConfig } from '@/theme/theme';
+
+interface MetricCardProps {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  iconBgColor?: string;
+  trend?: number; // percentage change e.g. +5 or -2
+  trendText?: string;
+  subtext?: string;
+}
+
+export default function MetricCard({
+  title,
+  value,
+  icon,
+  iconBgColor = 'rgba(0, 212, 255, 0.1)',
+  trend,
+  trendText,
+  subtext,
+}: MetricCardProps) {
+  const isPositive = trend ? trend > 0 : false;
+
+  return (
+    <Card
+      sx={{
+        position: 'relative',
+        overflow: 'hidden',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '4px',
+          background: `linear-gradient(90deg, ${themeConfig.primary}, ${themeConfig.secondary})`,
+          opacity: 0.8,
+        },
+      }}
+    >
+      <CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box>
+            <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              {title}
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.5, color: 'text.primary' }}>
+              {value}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              backgroundColor: iconBgColor,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {icon}
+          </Box>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+          {trend !== undefined && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                color: isPositive ? 'error.main' : 'success.main', // Positive imbalance/loss is bad, so make red, negative is good
+                bgcolor: isPositive ? 'rgba(244, 67, 54, 0.1)' : 'rgba(76, 175, 80, 0.1)',
+                px: 1,
+                py: 0.25,
+                borderRadius: 1,
+                fontSize: '0.75rem',
+                fontWeight: 700,
+              }}
+            >
+              {isPositive ? <ArrowUpIcon fontSize="inherit" /> : <ArrowDownIcon fontSize="inherit" />}
+              {Math.abs(trend)}%
+            </Box>
+          )}
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+            {trendText || subtext}
+          </Typography>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}

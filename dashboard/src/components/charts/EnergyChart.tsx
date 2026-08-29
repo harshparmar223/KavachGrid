@@ -1,2 +1,137 @@
-// KAVACHGRID 3.0 — Energy Chart. Phase 12.
-export default function EnergyChart() { return null; }
+// KAVACHGRID 3.0 — Energy Balance Chart. Phase 12.
+'use client';
+
+import React from 'react';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { Box, Typography } from '@mui/material';
+import { themeConfig } from '@/theme/theme';
+
+interface EnergyChartProps {
+  data: Array<{
+    timestamp: string;
+    feederPower: number;
+    consumerPower: number;
+    loss: number;
+  }>;
+}
+
+export default function EnergyChart({ data }: EnergyChartProps) {
+  // Format dates nicely on the axis
+  const formatXAxis = (tickItem: string) => {
+    try {
+      const d = new Date(tickItem);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return tickItem;
+    }
+  };
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <Box
+          sx={{
+            bgcolor: 'background.paper',
+            border: `1px solid ${themeConfig.border}`,
+            p: 2,
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          }}
+        >
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontWeight: 600 }}>
+            {new Date(label).toLocaleTimeString()}
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 700, mb: 0.5 }}>
+            ⚡ Feeder Input: {payload[0].value} kW
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'secondary.main', fontWeight: 700, mb: 0.5 }}>
+            🔌 Consumer Load: {payload[1].value} kW
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 800 }}>
+            ⚠️ Imbalance: {payload[2].value} kW ({((payload[2].value / payload[0].value) * 100).toFixed(1)}% Loss)
+          </Typography>
+        </Box>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <Box sx={{ width: '100%', height: 350 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart
+          data={data}
+          margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+        >
+          <defs>
+            <linearGradient id="colorFeeder" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={themeConfig.primary} stopOpacity={0.2} />
+              <stop offset="95%" stopColor={themeConfig.primary} stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="colorConsumer" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={themeConfig.secondary} stopOpacity={0.2} />
+              <stop offset="95%" stopColor={themeConfig.secondary} stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="colorLoss" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={themeConfig.error} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={themeConfig.error} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+
+          <CartesianGrid strokeDasharray="3 3" stroke={themeConfig.border} opacity={0.5} />
+          
+          <XAxis
+            dataKey="timestamp"
+            tickFormatter={formatXAxis}
+            stroke={themeConfig.textSecondary}
+            style={{ fontSize: '0.75rem', fontWeight: 500 }}
+          />
+          
+          <YAxis
+            label={{ value: 'Active Power (kW)', angle: -90, position: 'insideLeft', offset: 10, fill: themeConfig.textSecondary, fontSize: '0.8rem' }}
+            stroke={themeConfig.textSecondary}
+            style={{ fontSize: '0.75rem', fontWeight: 500 }}
+          />
+
+          <Tooltip content={<CustomTooltip />} />
+          
+          <Legend
+            verticalAlign="top"
+            height={36}
+            iconType="circle"
+            wrapperStyle={{ fontSize: '0.8rem', fontWeight: 600, color: themeConfig.textPrimary }}
+          />
+
+          <Area
+            type="monotone"
+            name="Feeder Input"
+            dataKey="feederPower"
+            stroke={themeConfig.primary}
+            strokeWidth={2.5}
+            fillOpacity={1}
+            fill="url(#colorFeeder)"
+          />
+          <Area
+            type="monotone"
+            name="Consumer Load"
+            dataKey="consumerPower"
+            stroke={themeConfig.secondary}
+            strokeWidth={2.5}
+            fillOpacity={1}
+            fill="url(#colorConsumer)"
+          />
+          <Area
+            type="monotone"
+            name="Imbalance Loss"
+            dataKey="loss"
+            stroke={themeConfig.error}
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+            fillOpacity={1}
+            fill="url(#colorLoss)"
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </Box>
+  );
+}
