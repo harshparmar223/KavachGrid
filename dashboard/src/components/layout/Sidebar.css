@@ -1,0 +1,104 @@
+.sidebar-shell {
+  background: linear-gradient(180deg, rgba(14, 22, 38, 0.92) 0%, rgba(9, 18, 32, 0.98) 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.04), 0 0 30px rgba(0, 212, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.brand-mark {
+  color: #00d4ff;
+  font-size: 2rem;
+  filter: drop-shadow(0 0 12px rgba(0, 212, 255, 0.75));
+  animation: brandPulse 2.6s ease-in-out infinite;
+}
+
+.brand-text {
+  position: relative;
+  display: inline-block;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #dff9ff 0%, #7dd3fc 30%, #00d4ff 55%, #8b5cf6 100%);
+  background-size: 180% 180%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 4s ease-in-out infinite alternate;
+}
+
+.nav-item-button {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.nav-item-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.08), transparent 40%, rgba(0, 212, 255, 0.08));
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.nav-item-button:hover::before,
+.nav-item-button.active::before {
+  opacity: 1;
+}
+
+.nav-item-button:hover {
+  transform: translateX(4px);
+  box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.16);
+}
+
+.nav-item-button.active {
+  box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.2), 0 0 20px rgba(0, 212, 255, 0.12);
+}
+
+.nav-icon {
+  transition: transform 0.25s ease, color 0.2s ease, filter 0.2s ease;
+}
+
+.nav-item-button:hover .nav-icon,
+.nav-item-button.active .nav-icon {
+  transform: scale(1.12) rotate(6deg);
+  filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.7));
+  color: #00d4ff !important;
+}
+
+.system-status {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.system-status::before {
+  content: "";
+  position: absolute;
+  inset: -35% auto auto -10%;
+  width: 45%;
+  height: 190%;
+  transform: rotate(18deg);
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.15), transparent);
+  animation: statusSweep 5s ease-in-out infinite;
+}
+
+@keyframes brandPulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.65)); }
+  50% { transform: scale(1.08); filter: drop-shadow(0 0 18px rgba(0, 212, 255, 0.95)); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+@keyframes statusSweep {
+  0% { transform: translateX(-120%) rotate(18deg); opacity: 0; }
+  15% { opacity: 1; }
+  50% { transform: translateX(240%) rotate(18deg); opacity: 1; }
+  100% { transform: translateX(240%) rotate(18deg); opacity: 0; }
+}

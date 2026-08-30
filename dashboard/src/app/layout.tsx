@@ -6,6 +6,7 @@ import type { Metadata } from 'next';
 import ThemeProvider from '@/components/layout/ThemeProvider';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
+import Galaxy from '@/components/animations/Galaxy';
 import { Box } from '@mui/material';
 
 export const metadata: Metadata = {
@@ -23,30 +24,59 @@ export default function RootLayout({
     <html lang="en">
       <body style={{ margin: 0, padding: 0 }}>
         <ThemeProvider>
-          <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
-            {/* Sidebar */}
-            <Sidebar />
+          <Box
+            sx={{
+              position: 'relative',
+              display: 'flex',
+              minHeight: '100vh',
+              backgroundColor: 'background.default',
+              overflow: 'hidden',
+            }}
+          >
+            <Box sx={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+              <Galaxy
+                focal={[0.5, 0.45]}
+                rotation={[1.0, 0.25]}
+                starSpeed={0.5}
+                density={0.8}
+                hueShift={190}
+                speed={0.8}
+                glowIntensity={0.28}
+                saturation={0.8}
+                mouseInteraction={true}
+                mouseRepulsion={true}
+                repulsionStrength={2.1}
+                twinkleIntensity={0.5}
+                rotationSpeed={0.12}
+                transparent={true}
+              />
+            </Box>
 
-            {/* Main Content Wrapper */}
-            <Box
-              sx={{
-                flexGrow: 1,
-                minHeight: '100vh',
-                display: 'flex',
-                flexDirection: 'column',
-                ml: '260px',
-                pt: '88px', // Header height + padding
-                px: 4,
-                pb: 4,
-                width: 'calc(100% - 260px)',
-              }}
-            >
-              {/* Header */}
-              <Header />
+            <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', minHeight: '100vh', width: '100%' }}>
+              {/* Sidebar */}
+              <Sidebar />
 
-              {/* Page Contents */}
-              <Box component="main" sx={{ flexGrow: 1 }}>
-                {children}
+              {/* Main Content Wrapper */}
+              <Box
+                sx={{
+                  flexGrow: 1,
+                  minHeight: '100vh',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  ml: '260px',
+                  pt: '88px',
+                  px: 4,
+                  pb: 4,
+                  width: 'calc(100% - 260px)',
+                }}
+              >
+                {/* Header */}
+                <Header />
+
+                {/* Page Contents */}
+                <Box component="main" sx={{ flexGrow: 1, position: 'relative', zIndex: 1 }}>
+                  {children}
+                </Box>
               </Box>
             </Box>
           </Box>

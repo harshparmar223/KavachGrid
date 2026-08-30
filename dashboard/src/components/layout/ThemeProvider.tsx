@@ -1,5 +1,4 @@
-// KAVACHGRID 3.0 — Theme Provider. Phase 12.
-'use client';
+"use client";
 
 import React from 'react';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';

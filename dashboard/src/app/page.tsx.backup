@@ -1,3 +1,53 @@
+"use client";
+import React from 'react';
+import { ThemeProvider } from '../components/layout/ThemeProvider';
+import { Sidebar } from '../components/layout/Sidebar';
+import { Header } from '../components/layout/Header';
+import MetricCard from '../components/cards/MetricCard';
+import EnergyChart from '../components/charts/EnergyChart';
+import RiskGauge from '../components/charts/RiskGauge';
+
+const sampleEnergy = Array.from({ length: 12 }).map((_, i) => ({ time: `${i}:00`, feeder: 300 + i * 5, consumers: 260 + i * 4, loss: 10 + i }));
+
+export default function Page() {
+  return (
+    <ThemeProvider>
+      <div style={{ display: 'flex' }}>
+        <Sidebar />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <Header alertsCount={3} connected={true} />
+          <main style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <section style={{ display: 'flex', gap: 12 }}>
+              <MetricCard title="Total Feeder Load (kW)" value="3,420" delta="+2.4%" />
+              <MetricCard title="Unaccounted Loss (kW)" value="120" delta="+0.6%" color="var(--kg-high)" />
+              <MetricCard title="High-Risk Meters" value={7} delta="" color="var(--kg-critical)" />
+              <RiskGauge value={42} />
+            </section>
+
+            <section>
+              <EnergyChart data={sampleEnergy} />
+            </section>
+
+            <section style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1, background: 'var(--kg-bg-surface)', padding: 12, borderRadius: 10 }}>
+                <div style={{ fontWeight: 700 }}>Real-time Alerts</div>
+                <ul style={{ marginTop: 8 }}>
+                  <li>Feeder F1 spike detected — 5 mins ago</li>
+                  <li>Meter H3 offline — 12 mins ago</li>
+                  <li>Localization mismatch in ZONE-A — 20 mins ago</li>
+                </ul>
+              </div>
+              <div style={{ width: 320, background: 'var(--kg-bg-surface)', padding: 12, borderRadius: 10 }}>
+                <div style={{ fontWeight: 700 }}>Quick Controls</div>
+                <div style={{ marginTop: 8 }}>Toggle features and filters here.</div>
+              </div>
+            </section>
+          </main>
+        </div>
+      </div>
+    </ThemeProvider>
+  );
+}
 // KAVACHGRID 3.0 — Overview Dashboard Page
 // Phase 12: Complete implementation
 'use client';
@@ -28,7 +78,6 @@ import {
 import MetricCard from '@/components/cards/MetricCard';
 import AlertCard from '@/components/cards/AlertCard';
 import EnergyChart from '@/components/charts/EnergyChart';
-import FoldText from '@/components/animations/FoldText';
 import { api, mockTelemetry } from '@/lib/api';
 import { useApi } from '@/hooks/useApi';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -133,30 +182,9 @@ export default function HomePage() {
     <Box sx={{ flexGrow: 1 }}>
       {/* Title */}
       <Box sx={{ mb: 4 }}>
-        <Box className="kavachgrid-hero">
-          <FoldText
-            text="KAVACHGRID"
-            splitBy="char"
-            hinge="top"
-            trigger="mount"
-            duration={0.8}
-            stagger={0.04}
-            ease="power3.out"
-            perspective={900}
-            creaseShading={0.55}
-            fontSize="clamp(2.5rem, 4vw, 5rem)"
-            fontWeight={900}
-            color="#f5f7ff"
-            style={{
-              display: 'inline-block',
-              lineHeight: 1,
-              letterSpacing: '0.08em',
-            }}
-          />
-          <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-            Smart Grid Investigation Support
-          </Typography>
-        </Box>
+        <Typography variant="h4" sx={{ fontWeight: 800, color: 'text.primary', mb: 1 }}>
+          System Overview
+        </Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
           Real-time smart grid validation status & anomaly assessment dashboard.
         </Typography>
@@ -206,8 +234,8 @@ export default function HomePage() {
       <Grid container spacing={3}>
         {/* Left Column: Energy Balance Chart */}
         <Grid item xs={12} lg={8}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(180deg, rgba(17, 34, 64, 0.9) 0%, rgba(7, 17, 31, 0.96) 100%)' }}>
-            <CardContent sx={{ p: 3, position: 'relative', zIndex: 1 }}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent sx={{ p: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
                 ⚡ Energy Balance (Real-Time Grid Flow)
               </Typography>
@@ -231,8 +259,8 @@ export default function HomePage() {
 
         {/* Right Column: Recent Alerts Feed */}
         <Grid item xs={12} lg={4}>
-          <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'linear-gradient(180deg, rgba(17, 34, 64, 0.9) 0%, rgba(7, 17, 31, 0.96) 100%)' }}>
-            <CardContent sx={{ p: 3, flexGrow: 1, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
+          <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ p: 3, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
                 🚨 Control Room Alerts Feed
               </Typography>

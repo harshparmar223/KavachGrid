@@ -1,5 +1,4 @@
-// KAVACHGRID 3.0 — Device Card. Phase 12.
-'use client';
+"use client";
 
 import React from 'react';
 import { Card, CardContent, Typography, Box, Chip, Grid, Button } from '@mui/material';

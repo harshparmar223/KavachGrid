@@ -1,6 +1,4 @@
-// KAVACHGRID 3.0 — Risk Assessment Page
-// Phase 12: Complete implementation
-'use client';
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import {

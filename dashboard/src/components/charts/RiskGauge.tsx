@@ -1,5 +1,4 @@
-// KAVACHGRID 3.0 — Risk Gauge. Phase 12.
-'use client';
+"use client";
 
 import React from 'react';
 import { Box, Typography } from '@mui/material';
