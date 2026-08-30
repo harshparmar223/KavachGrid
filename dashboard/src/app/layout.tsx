@@ -12,7 +12,7 @@ import { Box } from '@mui/material';
 const Galaxy = dynamic(() => import('@/components/animations/Galaxy'), { ssr: false });
 
 export const metadata: Metadata = {
-  title: 'KAVACHGRID 3.0 — Smart Grid Investigation Support',
+  title: 'KavachGrid — Smart Grid Investigation Support',
   description:
     'AI-Powered Energy Theft, Anomaly Detection, Risk Ranking & Progressive Localization System',
 };

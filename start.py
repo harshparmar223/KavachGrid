@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KAVACHGRID 3.0 — Unified 1-Click Application Launcher
+KavachGrid — Unified 1-Click Application Launcher
 Starts both the FastAPI Backend and Next.js Frontend together in a single command.
 
 Usage:
@@ -24,7 +24,7 @@ DASHBOARD_DIR = os.path.join(ROOT_DIR, "dashboard")
 
 def print_banner():
     print("=" * 65)
-    print("  ⚡ KAVACHGRID 3.0 — Unified System Launcher")
+    print("  ⚡ KavachGrid — Unified System Launcher")
     print("  🛡️  Zero Trust & AI-Powered Smart Grid Defense System")
     print("=" * 65)
 
