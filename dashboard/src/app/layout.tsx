@@ -3,11 +3,13 @@
 
 import React from 'react';
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import ThemeProvider from '@/components/layout/ThemeProvider';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
-import Galaxy from '@/components/animations/Galaxy';
 import { Box } from '@mui/material';
+
+const Galaxy = dynamic(() => import('@/components/animations/Galaxy'), { ssr: false });
 
 export const metadata: Metadata = {
   title: 'KAVACHGRID 3.0 — Smart Grid Investigation Support',

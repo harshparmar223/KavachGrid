@@ -11,6 +11,7 @@ import {
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const httpClient = axios.create({ timeout: 2500 });
 
 // ---------- Mock Data Store (Fallback) ----------
 export const mockDevices: Device[] = [
@@ -327,7 +328,7 @@ export const api = {
   // Devices
   async getDevices(): Promise<Device[]> {
     try {
-      const res = await axios.get(`${API_BASE}/devices`);
+      const res = await httpClient.get(`${API_BASE}/devices`);
       return res.data;
     } catch {
       return mockDevices;
@@ -336,7 +337,7 @@ export const api = {
 
   async getDevice(deviceId: string): Promise<Device> {
     try {
-      const res = await axios.get(`${API_BASE}/devices/${deviceId}`);
+      const res = await httpClient.get(`${API_BASE}/devices/${deviceId}`);
       return res.data;
     } catch {
       return mockDevices.find((d) => d.device_id === deviceId) || mockDevices[0];
@@ -346,7 +347,7 @@ export const api = {
   // Telemetry
   async getLatestTelemetry(): Promise<Telemetry[]> {
     try {
-      const res = await axios.get(`${API_BASE}/telemetry/latest`);
+      const res = await httpClient.get(`${API_BASE}/telemetry/latest`);
       return res.data;
     } catch {
       return Object.keys(mockTelemetry).map((k) => mockTelemetry[k][mockTelemetry[k].length - 1]);
@@ -355,17 +356,17 @@ export const api = {
 
   async getHistoricalTelemetry(deviceId: string): Promise<Telemetry[]> {
     try {
-      const res = await axios.get(`${API_BASE}/telemetry/${deviceId}`);
+      const res = await httpClient.get(`${API_BASE}/telemetry/${deviceId}`);
       return res.data.data || res.data;
     } catch {
-      return mockTelemetry[deviceId] || mockTelemetry['meter_101'];
+      return mockTelemetry[deviceId] || mockTelemetry['meter_101'] || [];
     }
   },
 
   // Alerts
   async getAlerts(): Promise<Alert[]> {
     try {
-      const res = await axios.get(`${API_BASE}/alerts`);
+      const res = await httpClient.get(`${API_BASE}/alerts`);
       return res.data;
     } catch {
       return mockAlerts;
@@ -374,7 +375,7 @@ export const api = {
 
   async getAlertSummary(): Promise<AlertSummary> {
     try {
-      const res = await axios.get(`${API_BASE}/alerts/summary`);
+      const res = await httpClient.get(`${API_BASE}/alerts/summary`);
       return res.data;
     } catch {
       return mockAlertSummary;
@@ -383,7 +384,7 @@ export const api = {
 
   async acknowledgeAlert(alertId: string): Promise<any> {
     try {
-      const res = await axios.put(`${API_BASE}/alerts/${alertId}/acknowledge`);
+      const res = await httpClient.put(`${API_BASE}/alerts/${alertId}/acknowledge`);
       return res.data;
     } catch {
       const alert = mockAlerts.find((a) => a.id === alertId);
@@ -399,7 +400,7 @@ export const api = {
   // Risk Scores
   async getRiskRanking(): Promise<RiskRanking> {
     try {
-      const res = await axios.get(`${API_BASE}/risk/ranking`);
+      const res = await httpClient.get(`${API_BASE}/risk/ranking`);
       return res.data;
     } catch {
       return mockRiskRanking;
@@ -408,7 +409,7 @@ export const api = {
 
   async getRiskBreakdown(deviceId: string): Promise<RiskScore> {
     try {
-      const res = await axios.get(`${API_BASE}/risk/${deviceId}`);
+      const res = await httpClient.get(`${API_BASE}/risk/${deviceId}`);
       return res.data;
     } catch {
       return (
@@ -421,7 +422,7 @@ export const api = {
   // Localization
   async getLocalization(): Promise<LocalizationResult[]> {
     try {
-      const res = await axios.get(`${API_BASE}/localization`);
+      const res = await httpClient.get(`${API_BASE}/localization`);
       return res.data;
     } catch {
       return mockLocalization;
@@ -430,7 +431,7 @@ export const api = {
 
   async updateLocalizationStatus(resultId: string, status: string, notes: string): Promise<any> {
     try {
-      const res = await axios.put(`${API_BASE}/localization/${resultId}`, { status, investigation_notes: notes });
+      const res = await httpClient.put(`${API_BASE}/localization/${resultId}`, { status, investigation_notes: notes });
       return res.data;
     } catch {
       const result = mockLocalization.find((l) => l.id === resultId);

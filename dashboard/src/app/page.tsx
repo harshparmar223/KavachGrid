@@ -25,11 +25,13 @@ import {
   Router as RouterIcon,
   Timeline as ChartIcon,
 } from '@mui/icons-material';
+import dynamic from 'next/dynamic';
 import MetricCard from '@/components/cards/MetricCard';
 import AlertCard from '@/components/cards/AlertCard';
-import EnergyChart from '@/components/charts/EnergyChart';
 import FoldText from '@/components/animations/FoldText';
-import { api, mockTelemetry } from '@/lib/api';
+
+const EnergyChart = dynamic(() => import('@/components/charts/EnergyChart'), { ssr: false });
+import { api, mockTelemetry, mockAlerts, mockDevices } from '@/lib/api';
 import { useApi } from '@/hooks/useApi';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { Alert, Telemetry } from '@/lib/types';
@@ -45,12 +47,12 @@ export default function HomePage() {
 
   const { lastTelemetry, latestAlert, deviceStatuses } = useWebSocket();
 
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
   const [liveTelemetry, setLiveTelemetry] = useState<Telemetry[]>([]);
 
   // Initialize alerts
   useEffect(() => {
-    if (initialAlerts) {
+    if (initialAlerts && initialAlerts.length > 0) {
       setAlerts(initialAlerts);
     }
   }, [initialAlerts]);
@@ -86,22 +88,25 @@ export default function HomePage() {
 
   // Compile energy balance history chart data
   const compileChartData = () => {
-    if (!feederHistory || !m101History || !m102History || !m103History) {
-      return [];
-    }
+    const fHist = feederHistory && feederHistory.length > 0 ? feederHistory : mockTelemetry['feeder_01'] || [];
+    const m1Hist = m101History && m101History.length > 0 ? m101History : mockTelemetry['meter_101'] || [];
+    const m2Hist = m102History && m102History.length > 0 ? m102History : mockTelemetry['meter_102'] || [];
+    const m3Hist = m103History && m103History.length > 0 ? m103History : mockTelemetry['meter_103'] || [];
 
     const dataLength = Math.min(
-      feederHistory.length,
-      m101History.length,
-      m102History.length,
-      m103History.length
+      fHist.length,
+      m1Hist.length,
+      m2Hist.length,
+      m3Hist.length
     );
 
+    if (dataLength === 0) return [];
+
     return Array.from({ length: dataLength }).map((_, i) => {
-      const feeder = feederHistory[i];
-      const m101 = m101History[i];
-      const m102 = m102History[i];
-      const m103 = m103History[i];
+      const feeder = fHist[i];
+      const m101 = m1Hist[i];
+      const m102 = m2Hist[i];
+      const m103 = m3Hist[i];
 
       // Sum of consumers
       const consumersSum = Number((m101.power + m102.power + m103.power).toFixed(2));
@@ -120,8 +125,9 @@ export default function HomePage() {
   const chartData = compileChartData();
 
   // Metrics calculations
-  const onlineCount = devices ? devices.filter((d) => deviceStatuses[d.device_id] === 'online' || d.status === 'online').length : 0;
-  const totalCount = devices ? devices.length : 0;
+  const displayDevices = devices && devices.length > 0 ? devices : mockDevices;
+  const onlineCount = displayDevices.filter((d) => deviceStatuses[d.device_id] === 'online' || d.status === 'online').length;
+  const totalCount = displayDevices.length;
 
   // Calculate current power draw and imbalance
   const currentFeederPower = chartData.length > 0 ? chartData[chartData.length - 1].feederPower : 18.5;
@@ -237,7 +243,7 @@ export default function HomePage() {
                 🚨 Control Room Alerts Feed
               </Typography>
 
-              {alertsLoading ? (
+              {alerts.length === 0 && alertsLoading ? (
                 <LinearProgress />
               ) : alerts.length === 0 ? (
                 <Typography variant="body2" sx={{ color: 'text.secondary', py: 4, textAlign: 'center' }}>
