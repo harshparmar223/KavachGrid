@@ -21,6 +21,7 @@ from app.api.alerts import router as alerts_router
 from app.api.risk import router as risk_router
 from app.api.localization import router as localization_router
 from app.api.gis import router as gis_router
+from app.api.simulator import router as simulator_router
 from app.api.websocket import router as websocket_router
 
 # ============================================
@@ -35,6 +36,7 @@ api_router.include_router(alerts_router)
 api_router.include_router(risk_router)
 api_router.include_router(localization_router)
 api_router.include_router(gis_router)
+api_router.include_router(simulator_router)
 
 # ============================================
 # WebSocket Router (no version prefix)

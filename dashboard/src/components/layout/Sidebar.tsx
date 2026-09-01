@@ -22,6 +22,7 @@ import {
   TrackChanges as LocalizationIcon,
   Map as MapIcon,
   FlashOn as FlashIcon,
+  Speed as SimulatorIcon,
 } from '@mui/icons-material';
 import { themeConfig } from '@/theme/theme';
 
@@ -31,6 +32,7 @@ const menuItems = [
   { text: 'Risk Monitoring', icon: <RiskIcon />, path: '/risk' },
   { text: 'Localization', icon: <LocalizationIcon />, path: '/localization' },
   { text: 'GIS Map', icon: <MapIcon />, path: '/map' },
+  { text: 'Grid Simulator', icon: <SimulatorIcon />, path: '/simulator' },
 ];
 
 export default function Sidebar() {

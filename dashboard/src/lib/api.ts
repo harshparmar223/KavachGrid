@@ -741,5 +741,105 @@ export const api = {
       return { status: 'success', result_id: resultId };
     }
   },
+
+  // Grid Simulator Controls
+  async getSimulatorStatus(): Promise<any> {
+    try {
+      const res = await httpClient.get(`${API_BASE}/simulator/status`);
+      return res.data;
+    } catch {
+      return {
+        is_running: true,
+        current_scenario: { id: 1, name: 'Normal Balanced Grid', description: 'Clean baseline grid with <5% loss.', active_theft: false },
+        tick_count: 42,
+        feeder: { device_id: 'FEEDER-01', name: 'Substation Feeder DT-01', power_w: 9450, voltage: 230.1, current: 41.8, power_factor: 0.98, status: 'online' },
+        consumers: [
+          { device_id: 'CONSUMER-H1', name: 'House H1 (Sharma)', mode: 'normal', actual_power_w: 2400, reported_power_w: 2400, voltage: 230, current: 10.5, power_factor: 0.98, status: 'online', is_theft_active: false },
+          { device_id: 'CONSUMER-H2', name: 'House H2 (Verma)', mode: 'normal', actual_power_w: 2200, reported_power_w: 2200, voltage: 230, current: 9.6, power_factor: 0.98, status: 'online', is_theft_active: false },
+          { device_id: 'CONSUMER-H3', name: 'House H3 (Patel)', mode: 'normal', actual_power_w: 2000, reported_power_w: 2000, voltage: 230, current: 8.7, power_factor: 0.98, status: 'online', is_theft_active: false },
+          { device_id: 'CONSUMER-H4', name: 'House H4 (Singh)', mode: 'normal', actual_power_w: 2100, reported_power_w: 2100, voltage: 230, current: 9.2, power_factor: 0.98, status: 'online', is_theft_active: false },
+        ],
+        balance: { feeder_power_w: 9450, total_consumer_w: 8700, technical_loss_w: 472.5, unaccounted_w: 277.5, deficit_pct: 2.9, severity: 'normal' },
+        available_scenarios: [
+          { id: 1, name: 'Normal Balanced Grid', description: 'All 4 consumers consume legitimate power (<5% loss).', severity: 'normal', active_theft: false },
+          { id: 2, name: 'Single Consumer Theft (H2 Bypass)', description: 'House H2 bypasses 75% load. Deficit spikes.', severity: 'critical', active_theft: true, target_device: 'CONSUMER-H2' },
+          { id: 3, name: 'Meter Sensor Fault (H3 Stuck 0W)', description: 'House H3 sensor freezes. Health engine generates Maintenance Ticket.', severity: 'warning', active_theft: false, target_device: 'CONSUMER-H3' },
+          { id: 4, name: 'Legitimate Load Surge (H1 Peak)', description: 'House H1 surges to 4.5kW. Feeder scales, no false alarm.', severity: 'info', active_theft: false },
+          { id: 5, name: 'Communication Dropout (H4 Offline)', description: 'House H4 drops offline. Ring buffer buffers locally.', severity: 'warning', active_theft: false, target_device: 'CONSUMER-H4' },
+          { id: 6, name: 'Multi-Node Coordinated Theft (H2 + H4)', description: 'H2 and H4 steal simultaneously. Localization ranks both top.', severity: 'critical', active_theft: true },
+        ],
+      };
+    }
+  },
+
+  async getSimulatorStream(): Promise<any[]> {
+    try {
+      const res = await httpClient.get(`${API_BASE}/simulator/telemetry/stream`);
+      return res.data;
+    } catch {
+      // Generate realistic 15-point baseline buffer
+      const now = Date.now();
+      return Array.from({ length: 15 }).map((_, i) => {
+        const t = new Date(now - (14 - i) * 3000);
+        return {
+          time: t.toTimeString().split(' ')[0],
+          feeder_w: 9450 + Math.sin(i) * 120,
+          consumers_sum_w: 8700 + Math.sin(i) * 100,
+          expected_loss_w: 472.5,
+          unaccounted_gap_w: 277.5,
+          deficit_pct: 2.9,
+          h1_w: 2400 + Math.random() * 50,
+          h2_w: 2200 + Math.random() * 50,
+          h3_w: 2000 + Math.random() * 50,
+          h4_w: 2100 + Math.random() * 50,
+        };
+      });
+    }
+  },
+
+  async startSimulator(): Promise<any> {
+    try {
+      const res = await httpClient.post(`${API_BASE}/simulator/start`);
+      return res.data;
+    } catch {
+      return { status: 'running' };
+    }
+  },
+
+  async stopSimulator(): Promise<any> {
+    try {
+      const res = await httpClient.post(`${API_BASE}/simulator/stop`);
+      return res.data;
+    } catch {
+      return { status: 'stopped' };
+    }
+  },
+
+  async setSimulatorScenario(scenarioId: number): Promise<any> {
+    try {
+      const res = await httpClient.post(`${API_BASE}/simulator/scenario/${scenarioId}`);
+      return res.data;
+    } catch {
+      return { scenario: scenarioId };
+    }
+  },
+
+  async setNodeMode(deviceId: string, mode: string, loadW?: number): Promise<any> {
+    try {
+      const res = await httpClient.post(`${API_BASE}/simulator/node/${deviceId}/mode`, { mode, load_w: loadW });
+      return res.data;
+    } catch {
+      return { deviceId, mode };
+    }
+  },
+
+  async resetSimulator(): Promise<any> {
+    try {
+      const res = await httpClient.post(`${API_BASE}/simulator/reset`);
+      return res.data;
+    } catch {
+      return { status: 'reset' };
+    }
+  },
 };
 
