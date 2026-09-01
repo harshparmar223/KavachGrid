@@ -8,9 +8,13 @@ import {
   RiskScore,
   RiskRanking,
   LocalizationResult,
+  GisTopologyResponse,
+  GisNode,
+  GisLocationUpdate,
 } from './types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const rawBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = rawBase.endsWith('/api/v1') ? rawBase : `${rawBase.replace(/\/+$/, '')}/api/v1`;
 const httpClient = axios.create({ timeout: 2500 });
 
 // ---------- Mock Data Store (Fallback) ----------
@@ -321,9 +325,294 @@ export const mockLocalization: LocalizationResult[] = [
   },
 ];
 
+export const mockGisTopology: GisTopologyResponse = {
+  nodes: [
+    {
+      device_id: 'feeder_01',
+      name: 'Feeder Transformer A',
+      device_type: 'feeder',
+      location: 'Substation A, Sector 4',
+      latitude: 28.6139,
+      longitude: 77.2090,
+      zone_id: 'zone_A',
+      status: 'online',
+      voltage: 231.5,
+      current: 40.2,
+      power: 9.3,
+      power_factor: 0.95,
+      energy: 1245.5,
+      trust_score: 99.5,
+      anomaly_score: 0.05,
+      overall_risk: 10.0,
+      risk_level: 'low',
+      active_alerts_count: 1,
+      last_seen_at: new Date().toISOString(),
+    },
+    {
+      device_id: 'local_sensor_01',
+      name: 'Zone A Branch Monitor Pole 4',
+      device_type: 'localization',
+      location: 'Pole 4, Street 12, Sector 4',
+      latitude: 28.6135,
+      longitude: 77.2098,
+      zone_id: 'zone_A',
+      status: 'online',
+      voltage: 230.0,
+      current: 28.5,
+      power: 6.5,
+      power_factor: 0.96,
+      energy: 850.0,
+      trust_score: 98.0,
+      anomaly_score: 0.1,
+      overall_risk: 25.0,
+      risk_level: 'low',
+      active_alerts_count: 0,
+      last_seen_at: new Date().toISOString(),
+    },
+    {
+      device_id: 'meter_101',
+      name: 'Consumer Block A - Apt 101',
+      device_type: 'consumer',
+      location: 'Apartment 101, Block A, Sector 4',
+      latitude: 28.6145,
+      longitude: 77.2105,
+      zone_id: 'zone_A',
+      status: 'online',
+      voltage: 228.4,
+      current: 4.5,
+      power: 1.02,
+      power_factor: 0.98,
+      energy: 312.2,
+      trust_score: 99.0,
+      anomaly_score: 0.02,
+      overall_risk: 12.4,
+      risk_level: 'low',
+      active_alerts_count: 0,
+      last_seen_at: new Date().toISOString(),
+    },
+    {
+      device_id: 'meter_102',
+      name: 'Consumer Block A - Apt 102',
+      device_type: 'consumer',
+      location: 'Apartment 102, Block A, Sector 4',
+      latitude: 28.6130,
+      longitude: 77.2110,
+      zone_id: 'zone_A',
+      status: 'warning',
+      voltage: 229.1,
+      current: 6.2,
+      power: 1.42,
+      power_factor: 0.97,
+      energy: 410.8,
+      trust_score: 75.0,
+      anomaly_score: 0.15,
+      overall_risk: 48.0,
+      risk_level: 'medium',
+      active_alerts_count: 1,
+      last_seen_at: new Date().toISOString(),
+    },
+    {
+      device_id: 'meter_103',
+      name: 'Commercial Shop 103',
+      device_type: 'consumer',
+      location: 'Shop 103, Market Complex, Sector 4',
+      latitude: 28.6150,
+      longitude: 77.2075,
+      zone_id: 'zone_A',
+      status: 'warning',
+      voltage: 225.1,
+      current: 1.5,
+      power: 0.3,
+      power_factor: 0.65,
+      energy: 985.4,
+      trust_score: 25.0,
+      anomaly_score: 0.92,
+      overall_risk: 88.5,
+      risk_level: 'critical',
+      active_alerts_count: 1,
+      last_seen_at: new Date().toISOString(),
+    },
+    {
+      device_id: 'meter_104',
+      name: 'Consumer Block A - Apt 104',
+      device_type: 'consumer',
+      location: 'Apartment 104, Block A, Sector 4',
+      latitude: 28.6120,
+      longitude: 77.2085,
+      zone_id: 'zone_A',
+      status: 'online',
+      voltage: 230.2,
+      current: 3.8,
+      power: 0.87,
+      power_factor: 0.98,
+      energy: 290.0,
+      trust_score: 99.0,
+      anomaly_score: 0.03,
+      overall_risk: 8.2,
+      risk_level: 'low',
+      active_alerts_count: 0,
+      last_seen_at: new Date().toISOString(),
+    },
+  ],
+  edges: [
+    {
+      id: 'edge-1',
+      from_node: 'feeder_01',
+      to_node: 'local_sensor_01',
+      from_coords: [28.6139, 77.2090],
+      to_coords: [28.6135, 77.2098],
+      edge_type: 'feeder_to_branch',
+      status: 'normal',
+      power_flow_kw: 6.5,
+      loss_estimated_pct: 1.2,
+    },
+    {
+      id: 'edge-2',
+      from_node: 'local_sensor_01',
+      to_node: 'meter_101',
+      from_coords: [28.6135, 77.2098],
+      to_coords: [28.6145, 77.2105],
+      edge_type: 'branch_to_consumer',
+      status: 'normal',
+      power_flow_kw: 1.02,
+      loss_estimated_pct: 1.5,
+    },
+    {
+      id: 'edge-3',
+      from_node: 'local_sensor_01',
+      to_node: 'meter_102',
+      from_coords: [28.6135, 77.2098],
+      to_coords: [28.6130, 77.2110],
+      edge_type: 'branch_to_consumer',
+      status: 'warning',
+      power_flow_kw: 1.42,
+      loss_estimated_pct: 8.5,
+    },
+    {
+      id: 'edge-4',
+      from_node: 'feeder_01',
+      to_node: 'meter_103',
+      from_coords: [28.6139, 77.2090],
+      to_coords: [28.6150, 77.2075],
+      edge_type: 'feeder_to_consumer',
+      status: 'critical',
+      power_flow_kw: 0.3,
+      loss_estimated_pct: 35.0,
+    },
+    {
+      id: 'edge-5',
+      from_node: 'feeder_01',
+      to_node: 'meter_104',
+      from_coords: [28.6139, 77.2090],
+      to_coords: [28.6120, 77.2085],
+      edge_type: 'feeder_to_consumer',
+      status: 'normal',
+      power_flow_kw: 0.87,
+      loss_estimated_pct: 1.0,
+    },
+  ],
+  zones: [
+    {
+      zone_id: 'zone_A',
+      total_nodes: 6,
+      feeder_id: 'feeder_01',
+      feeder_power_kw: 9.3,
+      consumer_total_power_kw: 3.61,
+      loss_percentage: 61.18,
+      critical_nodes_count: 1,
+      center_lat: 28.6139,
+      center_lng: 77.2090,
+    },
+  ],
+  total_nodes: 6,
+  center_lat: 28.6139,
+  center_lng: 77.2090,
+  generated_at: new Date().toISOString(),
+};
+
 // ---------- Typed API Client ----------
 export const api = {
   baseUrl: API_BASE,
+
+  // GIS & Topology
+  async getGisTopology(zoneId?: string): Promise<GisTopologyResponse> {
+    try {
+      const url = zoneId ? `${API_BASE}/gis/topology?zone_id=${encodeURIComponent(zoneId)}` : `${API_BASE}/gis/topology`;
+      const res = await httpClient.get(url);
+      return res.data;
+    } catch {
+      if (zoneId) {
+        return {
+          ...mockGisTopology,
+          nodes: mockGisTopology.nodes.filter((n) => n.zone_id === zoneId),
+          zones: mockGisTopology.zones.filter((z) => z.zone_id === zoneId),
+        };
+      }
+      return mockGisTopology;
+    }
+  },
+
+  async getGisGeoJson(zoneId?: string): Promise<any> {
+    try {
+      const url = zoneId ? `${API_BASE}/gis/geojson?zone_id=${encodeURIComponent(zoneId)}` : `${API_BASE}/gis/geojson`;
+      const res = await httpClient.get(url);
+      return res.data;
+    } catch {
+      return {
+        type: 'FeatureCollection',
+        features: mockGisTopology.nodes.map((n) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [n.longitude, n.latitude] },
+          properties: { ...n },
+        })),
+      };
+    }
+  },
+
+  async updateDeviceCoordinates(
+    deviceId: string,
+    data: GisLocationUpdate
+  ): Promise<GisNode> {
+    try {
+      const res = await httpClient.put(`${API_BASE}/gis/devices/${deviceId}/coordinates`, data);
+      return res.data;
+    } catch {
+      const node = mockGisTopology.nodes.find((n) => n.device_id === deviceId);
+      if (node) {
+        node.latitude = data.latitude;
+        node.longitude = data.longitude;
+        if (data.location) node.location = data.location;
+        if (data.zone_id) node.zone_id = data.zone_id;
+      }
+      const dev = mockDevices.find((d) => d.device_id === deviceId);
+      if (dev) {
+        dev.latitude = data.latitude;
+        dev.longitude = data.longitude;
+        if (data.location) dev.location = data.location;
+        if (data.zone_id) dev.zone_id = data.zone_id;
+      }
+      return node || (mockGisTopology.nodes[0] as GisNode);
+    }
+  },
+
+  async getGisStats(): Promise<any> {
+    try {
+      const res = await httpClient.get(`${API_BASE}/gis/stats`);
+      return res.data;
+    } catch {
+      return {
+        total_devices: mockDevices.length,
+        mapped_devices: mockDevices.filter((d) => d.latitude && d.longitude).length,
+        coverage_percentage: 100.0,
+        device_breakdown: {
+          feeders: mockDevices.filter((d) => d.device_type === 'feeder').length,
+          consumers: mockDevices.filter((d) => d.device_type === 'consumer').length,
+          localization_nodes: mockDevices.filter((d) => d.device_type === 'localization').length,
+        },
+      };
+    }
+  },
+
 
   // Devices
   async getDevices(): Promise<Device[]> {
@@ -429,6 +718,15 @@ export const api = {
     }
   },
 
+  async triggerLocalization(): Promise<LocalizationResult[]> {
+    try {
+      const res = await httpClient.post(`${API_BASE}/localization/trigger`);
+      return res.data;
+    } catch {
+      return mockLocalization;
+    }
+  },
+
   async updateLocalizationStatus(resultId: string, status: string, notes: string): Promise<any> {
     try {
       const res = await httpClient.put(`${API_BASE}/localization/${resultId}`, { status, investigation_notes: notes });
@@ -444,3 +742,4 @@ export const api = {
     }
   },
 };
+

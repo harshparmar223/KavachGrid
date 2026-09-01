@@ -1,14 +1,13 @@
 /*
  * ============================================================
- *  KAVACHGRID 3.0 — Feeder Node Firmware
+ *  KAVACHGRID 3.0 — Consumer Node Firmware (House 1)
  *  Board: ESP32 Dev Module
  *  Sensors:
  *    - ACS712 Current Sensor -> GPIO 34
- *    - Voltage Divider Sensor -> GPIO 35
  *
  *  MQTT Topics:
- *    - Telemetry: kavachgrid/feeder/FEEDER-01
- *    - Alerts:    kavachgrid/alerts/FEEDER-01
+ *    - Telemetry: kavachgrid/meter/CONSUMER-01
+ *    - Alerts:    kavachgrid/alerts/CONSUMER-01
  * ============================================================
  */
 
@@ -28,32 +27,31 @@ const char* WIFI_PASSWORD = "12345678";
 const char* MQTT_SERVER   = "10.250.75.55";
 const int   MQTT_PORT     = 1883;
 
-const char* DEVICE_ID     = "FEEDER-01";
-const char* MQTT_TOPIC    = "kavachgrid/feeder/FEEDER-01";
-const char* ALERT_TOPIC   = "kavachgrid/alerts/FEEDER-01";
+// ---- HOUSE 1 IDENTITY ----
+const char* DEVICE_ID     = "CONSUMER-H1";
+const char* MQTT_TOPIC    = "kavachgrid/meter/CONSUMER-H1";
+const char* ALERT_TOPIC   = "kavachgrid/alerts/CONSUMER-H1";
 // =======================================================
 
 // Hardware Pins & ADC configuration for ESP-12E / ESP32
 #if defined(ESP8266)
-  const int CURRENT_PIN = A0;    // ESP-12E single analog ADC Pin
-  const int VOLTAGE_PIN = A0;
+  const int CURRENT_PIN = A0;    // ESP-12E ADC Pin
   const int ADC_RESOLUTION = 1023;
   const float ADC_REF_VOLTAGE = 3.3;
 #else
   const int CURRENT_PIN = 34;    // ESP32 ADC Pin
-  const int VOLTAGE_PIN = 35;
   const int ADC_RESOLUTION = 4095;
   const float ADC_REF_VOLTAGE = 3.3;
 #endif
 
 // Calibration Constants
-const float ACS712_SENSITIVITY    = 0.066;  // V/A for ACS712-30A (use 0.185 for 5A, 0.100 for 20A)
-const float VOLTAGE_DIVIDER_RATIO = 5.0;    // Adjust for your voltage divider resistor ratio
+const float ACS712_SENSITIVITY = 0.185;  // V/A for ACS712-5A (use 0.066 for 30A, 0.100 for 20A)
+const float NOMINAL_VOLTAGE    = 230.0;  // AC supply estimation voltage
 
 // Anomaly thresholds
-const float OVERCURRENT_THRESHOLD  = 15.0;   // Amps
-const float OVERVOLTAGE_THRESHOLD  = 260.0;  // Volts
-const float UNDERVOLTAGE_THRESHOLD = 180.0;  // Volts
+const float OVERCURRENT_THRESHOLD  = 5.0;    // Amps
+const float ZERO_CURRENT_THRESHOLD = 0.01;
+const int   ZERO_CURRENT_COUNT_MAX = 12;
 
 // Timing & Sampling
 const unsigned long TELEMETRY_INTERVAL_MS = 5000;
@@ -65,9 +63,21 @@ const int NUM_SAMPLES = 20;
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 
-unsigned long lastTelemetryMs = 0;
-unsigned long sequenceNum     = 0;
-unsigned long bootTimeMs      = 0;
+float zeroCurrentVoltage = 2.5; // Auto-calibrated in setup()
+
+// Forward declarations
+void connectWiFi();
+void connectMQTT();
+void publishTelemetry();
+void checkAnomalies(float current, float power);
+void calibrateACS712();
+float readCurrent();
+float round2(float value);
+
+unsigned long lastTelemetryMs  = 0;
+unsigned long sequenceNum      = 0;
+unsigned long bootTimeMs       = 0;
+int           zeroCurrentCount = 0;
 
 // ===================== SETUP =====================
 void setup() {
@@ -81,9 +91,11 @@ void setup() {
 
   Serial.println();
   Serial.println("============================================");
-  Serial.println("  KAVACHGRID 3.0 — Feeder Node");
+  Serial.println("  KAVACHGRID 3.0 — Consumer Node (House 1)");
   Serial.println("  Device: " + String(DEVICE_ID));
   Serial.println("============================================");
+
+  calibrateACS712();
 
   connectWiFi();
   mqtt.setServer(MQTT_SERVER, MQTT_PORT);
@@ -91,7 +103,22 @@ void setup() {
   connectMQTT();
 
   bootTimeMs = millis();
-  Serial.println("[OK] Feeder node ready. Publishing every 5s.");
+  Serial.println("[OK] Consumer node (House 1) ready.");
+}
+
+// ===================== CALIBRATION =====================
+void calibrateACS712() {
+  Serial.print("[CAL] Calibrating ACS712 zero-current baseline...");
+  long sum = 0;
+  for (int i = 0; i < 60; i++) {
+    sum += analogRead(CURRENT_PIN);
+    delay(10);
+  }
+  float avgRaw = (float)sum / 60.0;
+  zeroCurrentVoltage = (avgRaw / (float)ADC_RESOLUTION) * ADC_REF_VOLTAGE;
+  Serial.print(" Done! Zero baseline = ");
+  Serial.print(zeroCurrentVoltage, 3);
+  Serial.println(" V");
 }
 
 // ===================== LOOP =====================
@@ -120,41 +147,31 @@ float readCurrent() {
     delayMicroseconds(200);
   }
   float avgRaw = (float)sum / NUM_SAMPLES;
-  float voltage = (avgRaw / ADC_RESOLUTION) * ADC_REF_VOLTAGE;
-  float current = (voltage - (ADC_REF_VOLTAGE / 2.0)) / ACS712_SENSITIVITY;
-  return abs(current);
-}
-
-float readVoltage() {
-  long sum = 0;
-  for (int i = 0; i < NUM_SAMPLES; i++) {
-    sum += analogRead(VOLTAGE_PIN);
-    delayMicroseconds(200);
+  float voltage = (avgRaw / (float)ADC_RESOLUTION) * ADC_REF_VOLTAGE;
+  float current = (voltage - zeroCurrentVoltage) / ACS712_SENSITIVITY;
+  
+  // Clean small ADC noise floor
+  if (abs(current) < 0.08) {
+    current = 0.0;
   }
-  float avgRaw = (float)sum / NUM_SAMPLES;
-  float adcVoltage = (avgRaw / (float)ADC_RESOLUTION) * ADC_REF_VOLTAGE;
-  float measured = adcVoltage * VOLTAGE_DIVIDER_RATIO;
-
-  return measured;
+  return abs(current);
 }
 
 // ===================== TELEMETRY =====================
 void publishTelemetry() {
   float current_A = readCurrent();
-  float voltage_V = readVoltage();
-  float power_W   = current_A * voltage_V;
+  float power_W   = current_A * NOMINAL_VOLTAGE;
 
   sequenceNum++;
   float uptimeSec = (millis() - bootTimeMs) / 1000.0;
 
-  // Realistic grid nominal values with slight live variation
   float freq = 49.95 + ((float)random(0, 15) / 100.0);
-  float pf   = 0.97 + ((float)random(-2, 2) / 100.0);
+  float pf   = 0.98;
 
   char buffer[384];
   snprintf(buffer, sizeof(buffer),
     "{\"device_id\":\"%s\",\"voltage\":%.1f,\"current\":%.2f,\"power\":%.2f,\"frequency\":%.2f,\"power_factor\":%.2f,\"uptime\":%lu,\"seq\":%lu,\"rssi\":%d}",
-    DEVICE_ID, voltage_V, current_A, power_W, freq, pf, (unsigned long)uptimeSec, sequenceNum, (int)WiFi.RSSI()
+    DEVICE_ID, NOMINAL_VOLTAGE, current_A, power_W, freq, pf, (unsigned long)uptimeSec, sequenceNum, (int)WiFi.RSSI()
   );
 
   if (mqtt.publish(MQTT_TOPIC, buffer)) {
@@ -164,11 +181,11 @@ void publishTelemetry() {
     Serial.println("[ERR] MQTT publish failed");
   }
 
-  checkAnomalies(current_A, voltage_V, power_W);
+  checkAnomalies(current_A, power_W);
 }
 
 // ===================== EDGE ANOMALY DETECTION =====================
-void checkAnomalies(float current, float voltage, float power) {
+void checkAnomalies(float current, float power) {
   bool anomaly = false;
   String alertType = "";
   String details = "";
@@ -176,22 +193,25 @@ void checkAnomalies(float current, float voltage, float power) {
   if (current > OVERCURRENT_THRESHOLD) {
     anomaly = true;
     alertType = "OVERCURRENT";
-    details = "Current " + String(current, 2) + "A exceeds threshold " + String(OVERCURRENT_THRESHOLD) + "A";
-  } else if (voltage > OVERVOLTAGE_THRESHOLD) {
-    anomaly = true;
-    alertType = "OVERVOLTAGE";
-    details = "Voltage " + String(voltage, 1) + "V exceeds " + String(OVERVOLTAGE_THRESHOLD) + "V";
-  } else if (voltage < UNDERVOLTAGE_THRESHOLD && voltage > 10.0) {
-    anomaly = true;
-    alertType = "UNDERVOLTAGE";
-    details = "Voltage " + String(voltage, 1) + "V below " + String(UNDERVOLTAGE_THRESHOLD) + "V";
+    details = "Current " + String(current, 2) + "A exceeds " + String(OVERCURRENT_THRESHOLD) + "A";
+    zeroCurrentCount = 0;
+  } else if (current < ZERO_CURRENT_THRESHOLD) {
+    zeroCurrentCount++;
+    if (zeroCurrentCount >= ZERO_CURRENT_COUNT_MAX) {
+      anomaly = true;
+      alertType = "ZERO_CONSUMPTION";
+      details = "Zero current for " + String(zeroCurrentCount * 5) + "s — possible meter bypass";
+      zeroCurrentCount = 0;
+    }
+  } else {
+    zeroCurrentCount = 0;
   }
 
   if (anomaly) {
     char alertBuf[256];
     snprintf(alertBuf, sizeof(alertBuf),
-      "{\"device_id\":\"%s\",\"alert_type\":\"%s\",\"severity\":\"high\",\"details\":\"%s\",\"current\":%.2f,\"voltage\":%.2f}",
-      DEVICE_ID, alertType.c_str(), details.c_str(), current, voltage
+      "{\"device_id\":\"%s\",\"alert_type\":\"%s\",\"severity\":\"%s\",\"details\":\"%s\",\"current\":%.2f,\"power\":%.2f}",
+      DEVICE_ID, alertType.c_str(), (alertType == "OVERCURRENT" ? "high" : "medium"), details.c_str(), current, power
     );
     mqtt.publish(ALERT_TOPIC, alertBuf);
 
@@ -223,10 +243,8 @@ void connectWiFi() {
     Serial.println(" OK!");
     Serial.print("[WiFi] IP: ");
     Serial.println(WiFi.localIP());
-    Serial.print("[WiFi] RSSI: ");
-    Serial.println(WiFi.RSSI());
   } else {
-    Serial.println(" FAILED! Retrying in 5s...");
+    Serial.println(" FAILED! Restarting...");
     delay(WIFI_RETRY_DELAY_MS);
     ESP.restart();
   }
@@ -248,7 +266,7 @@ void connectMQTT() {
     } else {
       Serial.print(" FAILED (rc=");
       Serial.print(mqtt.state());
-      Serial.println("). Retrying...");
+      Serial.println(")");
       retries++;
       delay(MQTT_RETRY_DELAY_MS);
     }

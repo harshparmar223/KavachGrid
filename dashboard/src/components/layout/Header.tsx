@@ -100,7 +100,7 @@ export default function Header() {
           {/* Real-time Clock */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
             <ClockIcon fontSize="small" />
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, letterSpacing: '0.05em' }}>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, letterSpacing: '0.05em' }} suppressHydrationWarning>
               {time || '00:00:00 AM'}
             </Typography>
           </Box>

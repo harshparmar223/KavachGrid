@@ -190,3 +190,71 @@ export interface WsMessage {
   payload: unknown;
   timestamp: string;
 }
+
+// ---------- GIS & Geospatial Grid Topology ----------
+export interface GisNode {
+  device_id: string;
+  name: string;
+  device_type: 'feeder' | 'consumer' | 'localization';
+  location: string | null;
+  latitude: number;
+  longitude: number;
+  zone_id: string | null;
+  status: 'online' | 'offline' | 'warning';
+  voltage: number | null;
+  current: number | null;
+  power: number | null;
+  power_factor: number | null;
+  energy: number | null;
+  trust_score: number | null;
+  anomaly_score: number | null;
+  overall_risk: number | null;
+  risk_level: RiskLevel;
+  active_alerts_count: number;
+  last_seen_at: string | null;
+}
+
+export interface GisEdge {
+  id: string;
+  from_node: string;
+  to_node: string;
+  from_coords: [number, number];
+  to_coords: [number, number];
+  edge_type: 'feeder_to_branch' | 'branch_to_consumer' | 'feeder_to_consumer';
+  status: 'normal' | 'warning' | 'critical';
+  power_flow_kw: number | null;
+  loss_estimated_pct: number | null;
+}
+
+export interface GisZoneSummary {
+  zone_id: string;
+  total_nodes: number;
+  feeder_id: string | null;
+  feeder_power_kw: number;
+  consumer_total_power_kw: number;
+  loss_percentage: number;
+  critical_nodes_count: number;
+  center_lat: number;
+  center_lng: number;
+}
+
+export interface GisTopologyResponse {
+  nodes: GisNode[];
+  edges: GisEdge[];
+  zones: GisZoneSummary[];
+  total_nodes: number;
+  center_lat: number;
+  center_lng: number;
+  generated_at: string;
+}
+
+export interface GisLocationUpdate {
+  latitude: number;
+  longitude: number;
+  location?: string;
+  zone_id?: string;
+}
+
+
+
+

@@ -65,12 +65,12 @@ class DeviceResponse(DeviceBase):
     id: UUID
     api_key: str = Field(..., description="Device authentication key (visible only to admin)")
     status: str
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = Field(None, validation_alias="device_metadata")
     created_at: datetime
     updated_at: datetime
     last_seen_at: Optional[datetime] = None
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class DeviceStatus(BaseModel):

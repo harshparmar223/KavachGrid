@@ -91,7 +91,7 @@ export default function AlertCard({ alert, onAcknowledge }: AlertCardProps) {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
             <TimeIcon sx={{ fontSize: 16 }} />
-            <Typography variant="caption" sx={{ fontWeight: 600 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600 }} suppressHydrationWarning>
               {new Date(alert.created_at).toLocaleString()}
             </Typography>
             {alert.device_id && (

@@ -80,11 +80,21 @@ def normalize_telemetry_payload(raw_dict: Dict[str, Any], default_device_id: Opt
     """
     device_id = raw_dict.get("device_id") or raw_dict.get("node_id") or raw_dict.get("id") or default_device_id
 
-    # If it's a meter shorthand like 'h1', format to 'CONSUMER-H1'
-    if device_id and device_id.lower().startswith("h") and len(device_id) <= 4:
-        device_id = f"CONSUMER-{device_id.upper()}"
-    elif device_id:
-        device_id = str(device_id).strip()
+    # Canonical alias normalization for seamless hardware integration
+    if device_id:
+        dev_str = str(device_id).strip().upper()
+        if dev_str in ("CONSUMER-01", "CONSUMER_01", "METER-01", "METER_101", "HOUSE1", "H1", "HOUSE-1"):
+            device_id = "CONSUMER-H1"
+        elif dev_str in ("CONSUMER-02", "CONSUMER_02", "METER-02", "METER_102", "HOUSE2", "H2", "HOUSE-2"):
+            device_id = "CONSUMER-H2"
+        elif dev_str in ("CONSUMER-03", "CONSUMER_03", "METER-03", "METER_103", "HOUSE3", "H3", "HOUSE-3"):
+            device_id = "CONSUMER-H3"
+        elif dev_str in ("CONSUMER-04", "CONSUMER_04", "METER-04", "METER_104", "HOUSE4", "H4", "HOUSE-4"):
+            device_id = "CONSUMER-H4"
+        elif dev_str in ("FEEDER-1", "FEEDER_01", "FEEDER"):
+            device_id = "FEEDER-01"
+        else:
+            device_id = dev_str
 
     voltage = raw_dict.get("voltage") or raw_dict.get("v") or 230.0
     current = raw_dict.get("current") or raw_dict.get("current_a") or raw_dict.get("i") or raw_dict.get("a") or 0.0

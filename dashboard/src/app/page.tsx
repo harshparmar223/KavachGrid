@@ -40,15 +40,16 @@ import { themeConfig } from '@/theme/theme';
 export default function HomePage() {
   const { data: devices, loading: devicesLoading } = useApi(api.getDevices);
   const { data: initialAlerts, loading: alertsLoading } = useApi(api.getAlerts);
-  const { data: feederHistory } = useApi(() => api.getHistoricalTelemetry('feeder_01'));
-  const { data: m101History } = useApi(() => api.getHistoricalTelemetry('meter_101'));
-  const { data: m102History } = useApi(() => api.getHistoricalTelemetry('meter_102'));
-  const { data: m103History } = useApi(() => api.getHistoricalTelemetry('meter_103'));
+  const { data: initialTelemetry } = useApi(api.getLatestTelemetry);
+  const { data: feederHistory } = useApi(() => api.getHistoricalTelemetry('FEEDER-01'));
+  const { data: m101History } = useApi(() => api.getHistoricalTelemetry('CONSUMER-H1'));
+  const { data: m102History } = useApi(() => api.getHistoricalTelemetry('CONSUMER-H2'));
+  const { data: m103History } = useApi(() => api.getHistoricalTelemetry('CONSUMER-H3'));
 
   const { lastTelemetry, latestAlert, deviceStatuses } = useWebSocket();
 
   const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
-  const [liveTelemetry, setLiveTelemetry] = useState<Telemetry[]>([]);
+  const [telemetryMap, setTelemetryMap] = useState<Record<string, Telemetry>>({});
 
   // Initialize alerts
   useEffect(() => {
@@ -57,23 +58,53 @@ export default function HomePage() {
     }
   }, [initialAlerts]);
 
+  // Initialize latest telemetry from backend
+  useEffect(() => {
+    if (initialTelemetry && initialTelemetry.length > 0) {
+      const map: Record<string, Telemetry> = {};
+      initialTelemetry.forEach((t) => {
+        const id = t.device_id;
+        map[id] = t;
+        map[id.toLowerCase()] = t;
+        map[id.toUpperCase()] = t;
+        if (id === 'CONSUMER-01' || id === 'meter_101') map['CONSUMER-H1'] = t;
+        if (id === 'CONSUMER-02' || id === 'meter_102') map['CONSUMER-H2'] = t;
+        if (id === 'CONSUMER-03' || id === 'meter_103') map['CONSUMER-H3'] = t;
+      });
+      setTelemetryMap((prev) => ({ ...map, ...prev }));
+    }
+  }, [initialTelemetry]);
+
   // Handle incoming live alerts
   useEffect(() => {
     if (latestAlert) {
       setAlerts((prev) => {
-        // Prevent duplicate alerts in listing
         if (prev.some((a) => a.id === latestAlert.id)) return prev;
         return [latestAlert, ...prev].slice(0, 8);
       });
     }
   }, [latestAlert]);
 
-  // Handle incoming live telemetry
+  // Handle incoming live telemetry over WebSocket
   useEffect(() => {
     if (lastTelemetry) {
-      setLiveTelemetry((prev) => {
-        const filtered = prev.filter((t) => t.device_id !== lastTelemetry.device_id);
-        return [lastTelemetry, ...filtered].slice(0, 10);
+      setTelemetryMap((prev) => {
+        const key = lastTelemetry.device_id;
+        const aliases: Record<string, Telemetry> = {
+          [key]: lastTelemetry,
+          [key.toUpperCase()]: lastTelemetry,
+          [key.toLowerCase()]: lastTelemetry,
+        };
+        if (key === 'CONSUMER-01' || key === 'meter_101' || key.toLowerCase().includes('house1')) {
+          aliases['CONSUMER-H1'] = lastTelemetry;
+        }
+        if (key === 'CONSUMER-02' || key === 'meter_102' || key.toLowerCase().includes('house2')) {
+          aliases['CONSUMER-H2'] = lastTelemetry;
+        }
+        return {
+          ...prev,
+          ...aliases,
+        };
       });
     }
   }, [lastTelemetry]);
@@ -282,63 +313,47 @@ export default function HomePage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {liveTelemetry.length === 0 ? (
-                      // Show defaults from mock latest telemetry
-                      devices?.slice(0, 5).map((device) => {
-                        const readings = mockTelemetry[device.device_id];
-                        const baseData = readings && readings.length > 0
-                          ? readings[readings.length - 1]
-                          : { voltage: 230, current: 5, power: 1.15, frequency: 50.00, power_factor: 0.98, trust_score: 99, timestamp: new Date().toISOString() };
+                    {displayDevices.map((device) => {
+                      const liveData =
+                        telemetryMap[device.device_id] ||
+                        telemetryMap[device.device_id.toUpperCase()] ||
+                        telemetryMap[device.device_id.toLowerCase()];
 
-                        return (
-                          <TableRow key={device.device_id}>
-                            <TableCell component="th" scope="row" sx={{ fontWeight: 700, color: themeConfig.primary }}>
-                              {device.device_id}
-                            </TableCell>
-                            <TableCell align="right">{baseData.voltage}</TableCell>
-                            <TableCell align="right">{baseData.current}</TableCell>
-                            <TableCell align="right">{baseData.power}</TableCell>
-                            <TableCell align="right">{baseData.frequency || 50.00}</TableCell>
-                            <TableCell align="right">{baseData.power_factor || 0.98}</TableCell>
-                            <TableCell align="right">
-                              <Chip
-                                label={`${baseData.trust_score}%`}
-                                size="small"
-                                color={baseData.trust_score && baseData.trust_score >= 80 ? 'success' : 'warning'}
-                                sx={{ fontWeight: 700 }}
-                              />
-                            </TableCell>
-                            <TableCell align="right">
-                              {new Date(baseData.timestamp).toLocaleTimeString()}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    ) : (
-                      liveTelemetry.map((t) => (
-                        <TableRow key={t.id}>
+                      const mockReadings = mockTelemetry[device.device_id] || mockTelemetry[device.device_id.toLowerCase()];
+                      const baseData = liveData || (mockReadings && mockReadings.length > 0 ? mockReadings[mockReadings.length - 1] : null);
+
+                      const v = baseData ? Number(baseData.voltage).toFixed(1) : '230.0';
+                      const i = baseData ? Number(baseData.current).toFixed(2) : '0.00';
+                      const rawP = baseData ? Number(baseData.power) : 0.0;
+                      // Sensor sends Watts (e.g. 29.48 W). If >= 5.0 W, convert to kW.
+                      const pKw = rawP >= 5.0 ? (rawP / 1000.0).toFixed(3) : (rawP > 0 ? (rawP / 1000.0).toFixed(3) : '0.000');
+                      const freq = baseData?.frequency ? Number(baseData.frequency).toFixed(2) : '50.00';
+                      const pf = baseData?.power_factor ? Number(baseData.power_factor).toFixed(2) : '0.98';
+                      const trust = baseData?.trust_score !== undefined ? Number(baseData.trust_score).toFixed(0) : '99';
+                      const timeStr = baseData ? new Date(baseData.timestamp).toLocaleTimeString() : 'Just now';
+
+                      return (
+                        <TableRow key={device.device_id} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}>
                           <TableCell component="th" scope="row" sx={{ fontWeight: 700, color: themeConfig.primary }}>
-                            {t.device_id}
+                            {device.device_id}
                           </TableCell>
-                          <TableCell align="right">{t.voltage}</TableCell>
-                          <TableCell align="right">{t.current}</TableCell>
-                          <TableCell align="right">{t.power}</TableCell>
-                          <TableCell align="right">{t.frequency || 50.00}</TableCell>
-                          <TableCell align="right">{t.power_factor || 0.98}</TableCell>
+                          <TableCell align="right">{v}</TableCell>
+                          <TableCell align="right">{i}</TableCell>
+                          <TableCell align="right">{pKw}</TableCell>
+                          <TableCell align="right">{freq}</TableCell>
+                          <TableCell align="right">{pf}</TableCell>
                           <TableCell align="right">
                             <Chip
-                              label={`${t.trust_score || 99}%`}
+                              label={`${trust}%`}
                               size="small"
-                              color={t.trust_score && t.trust_score >= 80 ? 'success' : 'warning'}
+                              color={Number(trust) >= 80 ? 'success' : 'warning'}
                               sx={{ fontWeight: 700 }}
                             />
                           </TableCell>
-                          <TableCell align="right">
-                            {new Date(t.timestamp).toLocaleTimeString()}
-                          </TableCell>
+                          <TableCell align="right">{timeStr}</TableCell>
                         </TableRow>
-                      ))
-                    )}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>

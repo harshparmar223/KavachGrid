@@ -9,6 +9,20 @@ This is the main application file that:
 - Handles graceful shutdown & MQTT background client
 """
 
+import os
+import sys
+import io
+
+# Suppress TensorFlow verbose logging & oneDNN notice
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+# Fix Windows console encoding for emoji/unicode characters
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI

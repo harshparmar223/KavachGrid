@@ -107,7 +107,7 @@ export default function DeviceCard({ device, onSelect, selected = false }: Devic
         </Grid>
 
         {device.last_seen_at && (
-          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1.5, fontSize: '0.7rem', textAlign: 'right' }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1.5, fontSize: '0.7rem', textAlign: 'right' }} suppressHydrationWarning>
             Last seen: {new Date(device.last_seen_at).toLocaleTimeString()}
           </Typography>
         )}

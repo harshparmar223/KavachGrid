@@ -31,11 +31,16 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    JSON,
     String,
     Text,
+    Uuid,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+# Cross-engine JSON and UUID types (supports both PostgreSQL and SQLite)
+JSONB = JSON
+UUID = Uuid
 from sqlalchemy.orm import relationship
 
 from app.db.database import Base
@@ -53,7 +58,6 @@ class User(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
-        server_default=text("uuid_generate_v4()"),
     )
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
@@ -100,7 +104,6 @@ class Device(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
-        server_default=text("uuid_generate_v4()"),
     )
     device_id = Column(String(50), unique=True, nullable=False, index=True)
     device_type = Column(String(20), nullable=False)
@@ -159,7 +162,6 @@ class Telemetry(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
-        server_default=text("uuid_generate_v4()"),
     )
     device_id = Column(
         String(50),
@@ -207,7 +209,6 @@ class Alert(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
-        server_default=text("uuid_generate_v4()"),
     )
     device_id = Column(
         String(50),
@@ -271,7 +272,6 @@ class RiskScore(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
-        server_default=text("uuid_generate_v4()"),
     )
     device_id = Column(
         String(50),
@@ -321,7 +321,6 @@ class LocalizationResult(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
-        server_default=text("uuid_generate_v4()"),
     )
     zone_id = Column(String(50), nullable=False, index=True)
     confidence = Column(Float, nullable=False)
@@ -382,7 +381,6 @@ class AuditLog(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
-        server_default=text("uuid_generate_v4()"),
     )
     user_id = Column(
         UUID(as_uuid=True),

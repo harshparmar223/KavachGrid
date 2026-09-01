@@ -1,27 +1,16 @@
 """
-KAVACHGRID 3.0 — Async MQTT Client & Background Subscriber
-Phase 3: Complete Implementation
-
-Provides:
-    - Asynchronous MQTT subscription using aiomqtt
-    - Background worker loop attached to FastAPI lifecycle
-    - Non-blocking startup with auto-reconnection & exponential backoff
-    - Async publish capability for backend alerts/commands
-    - Live client health & telemetry ingestion metrics
+KAVACHGRID 3.0 — Robust MQTT Client for Windows & Linux
+Uses standard paho-mqtt with background loop thread and asyncio WebSocket bridge.
 """
 
 import asyncio
 from datetime import datetime, timezone
 import json
 import logging
+import threading
 from typing import Any, Dict, Optional, Union
 
-try:
-    import aiomqtt
-    AIOMQTT_AVAILABLE = True
-except ImportError:
-    aiomqtt = None
-    AIOMQTT_AVAILABLE = False
+import paho.mqtt.client as paho_mqtt
 from fastapi import FastAPI
 
 from app.config import settings
@@ -32,50 +21,44 @@ logger = logging.getLogger("kavachgrid.mqtt.client")
 
 class KavachMQTTClient:
     """
-    Manages the asynchronous MQTT connection, subscription worker,
-    and publishing interface for KAVACHGRID backend.
+    Manages MQTT connection and dispatches messages to database and WebSocket clients.
+    Thread-safe and cross-platform compatible.
     """
 
     def __init__(
         self,
         host: Optional[str] = None,
         port: Optional[int] = None,
+        subscribe_topic: str = "kavachgrid/#",
         username: Optional[str] = None,
         password: Optional[str] = None,
-        keepalive: Optional[int] = None,
-        subscribe_topic: str = "kavachgrid/#",
     ):
         self.host = host or settings.MQTT_BROKER_HOST
         self.port = port or settings.MQTT_BROKER_PORT
+        self.subscribe_topic = subscribe_topic
         self.username = username or settings.MQTT_USERNAME
         self.password = password or settings.MQTT_PASSWORD
-        self.keepalive = keepalive or settings.MQTT_KEEPALIVE
-        self.subscribe_topic = subscribe_topic
 
-        self._running = False
+        self._client: Optional[paho_mqtt.Client] = None
         self._connected = False
-        self._task: Optional[asyncio.Task] = None
-        self._client: Optional[aiomqtt.Client] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
-        # Metrics
-        self.messages_received: int = 0
-        self.messages_processed_ok: int = 0
-        self.messages_failed: int = 0
-        self.messages_published: int = 0
+        self.messages_received = 0
+        self.messages_processed_ok = 0
+        self.messages_failed = 0
+        self.messages_published = 0
         self.last_connected_at: Optional[datetime] = None
         self.last_message_at: Optional[datetime] = None
         self.last_error: Optional[str] = None
 
     @property
     def is_connected(self) -> bool:
-        """Return current broker connection status."""
         return self._connected
 
     @property
     def status_summary(self) -> Dict[str, Any]:
-        """Return dictionary representation of MQTT client status."""
         return {
-            "status": "connected" if self._connected else ("starting" if self._running else "stopped"),
+            "status": "running" if self._connected else "stopped",
             "connected": self._connected,
             "broker": f"{self.host}:{self.port}",
             "subscription": self.subscribe_topic,
@@ -88,30 +71,128 @@ class KavachMQTTClient:
             "last_error": self.last_error,
         }
 
-    async def start(self) -> None:
-        """Start the background subscriber worker."""
-        if self._running:
-            return
+    def _on_connect(self, client, userdata, flags, rc, properties=None):
+        if rc == 0:
+            self._connected = True
+            self.last_connected_at = datetime.now(timezone.utc)
+            self.last_error = None
+            logger.info(f"✅ Connected to MQTT Broker at {self.host}:{self.port}")
+            client.subscribe(self.subscribe_topic)
+            logger.info(f"🎯 Subscribed to '{self.subscribe_topic}'")
+        else:
+            self._connected = False
+            self.last_error = f"Connection failed with code {rc}"
+            logger.error(f"❌ MQTT Connection failed with code {rc}")
 
-        self._running = True
-        self._task = asyncio.create_task(self._subscriber_loop(), name="kavachgrid-mqtt-worker")
-        logger.info(f"📡 MQTT client worker initiated for {self.host}:{self.port}")
+    def _on_disconnect(self, client, userdata, rc, properties=None):
+        self._connected = False
+        if rc != 0:
+            logger.warning(f"⚠️ Unexpected MQTT disconnect (rc={rc}). Auto-reconnecting...")
+
+    def _on_message(self, client, userdata, msg):
+        self.messages_received += 1
+        self.last_message_at = datetime.now(timezone.utc)
+        topic_str = str(msg.topic)
+        payload_raw = msg.payload
+
+        logger.info(f"📥 MQTT Packet on {topic_str}: {payload_raw[:80]}")
+
+        # 1. Process with business logic / DB
+        try:
+            result = route_and_process_message(topic_str, payload_raw)
+            if result.get("status") in ("success", "unhandled"):
+                self.messages_processed_ok += 1
+            else:
+                self.messages_failed += 1
+        except Exception as e:
+            self.messages_failed += 1
+            logger.error(f"Error processing MQTT message: {e}")
+
+        # 2. Push to WebSocket clients on FastAPI event loop
+        if self._loop and self._loop.is_running():
+            try:
+                if isinstance(payload_raw, bytes):
+                    p_data = json.loads(payload_raw.decode("utf-8"))
+                elif isinstance(payload_raw, str):
+                    p_data = json.loads(payload_raw)
+                else:
+                    p_data = payload_raw
+
+                if isinstance(p_data, dict):
+                    dev_id = str(p_data.get("device_id") or p_data.get("node_id") or ("FEEDER-01" if "feeder" in topic_str else "CONSUMER-H1")).strip().upper()
+                    if dev_id in ("CONSUMER-01", "CONSUMER_01", "METER-01", "METER_101", "HOUSE1", "H1", "HOUSE-1"):
+                        dev_id = "CONSUMER-H1"
+                    elif dev_id in ("CONSUMER-02", "CONSUMER_02", "METER-02", "METER_102", "HOUSE2", "H2", "HOUSE-2"):
+                        dev_id = "CONSUMER-H2"
+                    elif dev_id in ("FEEDER-1", "FEEDER_01", "FEEDER"):
+                        dev_id = "FEEDER-01"
+                    
+                    if "feeder" in topic_str or "meter" in topic_str or "consumer" in topic_str or "localization" in topic_str:
+                        v = float(p_data.get("voltage") or p_data.get("v") or 230.0)
+                        c = float(p_data.get("current") or p_data.get("i") or 0.0)
+                        p = p_data.get("power") or p_data.get("p") or p_data.get("w")
+                        if p is None:
+                            p = v * c
+                        else:
+                            p = float(p)
+
+                        telemetry_ws = {
+                            "id": f"{dev_id}-{p_data.get('seq', datetime.now().timestamp())}",
+                            "device_id": dev_id,
+                            "voltage": v,
+                            "current": c,
+                            "power": p,
+                            "frequency": float(p_data.get("frequency") or p_data.get("freq") or 50.0),
+                            "power_factor": float(p_data.get("power_factor") or p_data.get("pf") or 0.98),
+                            "trust_score": float(p_data.get("trust_score", 99.0)),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                        from app.api.websocket import broadcast_update
+                        asyncio.run_coroutine_threadsafe(
+                            broadcast_update("telemetry_update", telemetry_ws),
+                            self._loop
+                        )
+                    elif "alert" in topic_str:
+                        from app.api.websocket import broadcast_update
+                        asyncio.run_coroutine_threadsafe(
+                            broadcast_update("alert_created", p_data),
+                            self._loop
+                        )
+            except Exception as ws_err:
+                logger.debug(f"WS push error: {ws_err}")
+
+    async def start(self) -> None:
+        """Start the background MQTT client loop."""
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
+
+        try:
+            self._client = paho_mqtt.Client(paho_mqtt.CallbackAPIVersion.VERSION2, f"kavach-backend-{id(self)}")
+        except (AttributeError, TypeError):
+            self._client = paho_mqtt.Client(f"kavach-backend-{id(self)}")
+
+        self._client.on_connect = self._on_connect
+        self._client.on_disconnect = self._on_disconnect
+        self._client.on_message = self._on_message
+
+        try:
+            self._client.connect(self.host, self.port, 60)
+            self._client.loop_start()
+            logger.info(f"📡 MQTT client loop started for {self.host}:{self.port}")
+        except Exception as e:
+            self.last_error = str(e)
+            logger.error(f"❌ Failed to connect to MQTT Broker: {e}")
 
     async def stop(self) -> None:
-        """Gracefully stop subscriber worker and disconnect."""
-        logger.info("🛑 Stopping MQTT client worker...")
-        self._running = False
-        self._connected = False
-
-        if self._task and not self._task.done():
-            self._task.cancel()
-            try:
-                await asyncio.wait_for(self._task, timeout=3.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
-            self._task = None
-
-        logger.info("✅ MQTT client worker stopped.")
+        """Gracefully stop MQTT client."""
+        if self._client:
+            self._client.loop_stop()
+            self._client.disconnect()
+            self._client = None
+            self._connected = False
+            logger.info("🛑 MQTT client stopped.")
 
     async def publish(
         self,
@@ -120,9 +201,6 @@ class KavachMQTTClient:
         qos: int = 0,
         retain: bool = False,
     ) -> bool:
-        """
-        Publish a message to an MQTT topic.
-        """
         if isinstance(payload, dict):
             payload_str = json.dumps(payload)
         elif isinstance(payload, bytes):
@@ -130,112 +208,25 @@ class KavachMQTTClient:
         else:
             payload_str = str(payload)
 
-        if not AIOMQTT_AVAILABLE:
-            logger.warning("aiomqtt library not installed; cannot publish message.")
+        if not self._client:
             return False
 
         try:
-            client_kwargs = {
-                "hostname": self.host,
-                "port": self.port,
-                "timeout": 5.0,
-            }
-            if self.username and self.password:
-                client_kwargs["username"] = self.username
-                client_kwargs["password"] = self.password
-
-            async with aiomqtt.Client(**client_kwargs) as client:
-                await client.publish(topic, payload=payload_str, qos=qos, retain=retain)
-                self.messages_published += 1
-                logger.info(f"📤 Published to '{topic}': {payload_str[:80]}...")
-                return True
+            self._client.publish(topic, payload_str, qos=qos, retain=retain)
+            self.messages_published += 1
+            return True
         except Exception as e:
-            self.last_error = f"Publish error: {e}"
-            logger.error(f"❌ Failed to publish to '{topic}': {e}")
+            self.last_error = str(e)
             return False
-
-    async def _subscriber_loop(self) -> None:
-        """
-        Continuous subscription loop with exponential backoff on connection errors.
-        """
-        if not AIOMQTT_AVAILABLE:
-            logger.warning("aiomqtt library not installed; MQTT subscriber loop disabled.")
-            return
-
-        backoff = 1.0
-        max_backoff = 30.0
-
-        while self._running:
-            try:
-                client_kwargs = {
-                    "hostname": self.host,
-                    "port": self.port,
-                    "keepalive": self.keepalive,
-                    "identifier": f"kavach-backend-{id(self)}",
-                    "timeout": 10.0,
-                }
-                if self.username and self.password:
-                    client_kwargs["username"] = self.username
-                    client_kwargs["password"] = self.password
-
-                logger.info(f"🔄 Connecting to MQTT Broker at {self.host}:{self.port}...")
-                async with aiomqtt.Client(**client_kwargs) as client:
-                    self._client = client
-                    self._connected = True
-                    self.last_connected_at = datetime.now(timezone.utc)
-                    self.last_error = None
-                    backoff = 1.0
-                    logger.info(f"✅ Connected to MQTT Broker. Subscribing to '{self.subscribe_topic}'...")
-
-                    await client.subscribe(self.subscribe_topic)
-                    logger.info(f"🎯 Subscribed to '{self.subscribe_topic}' successfully.")
-
-                    async for message in client.messages:
-                        if not self._running:
-                            break
-
-                        self.messages_received += 1
-                        self.last_message_at = datetime.now(timezone.utc)
-                        topic_str = str(message.topic)
-                        payload_raw = message.payload
-
-                        try:
-                            result = route_and_process_message(topic_str, payload_raw)
-                            if result.get("status") in ("success", "unhandled"):
-                                self.messages_processed_ok += 1
-                            else:
-                                self.messages_failed += 1
-                        except Exception as proc_err:
-                            self.messages_failed += 1
-                            logger.error(f"Error dispatching MQTT message: {proc_err}")
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self._connected = False
-                self.last_error = str(e)
-                logger.warning(
-                    f"⚠️ MQTT Broker unreachable ({e}). Retrying in {backoff:.1f}s..."
-                )
-                try:
-                    await asyncio.sleep(backoff)
-                except asyncio.CancelledError:
-                    break
-                backoff = min(backoff * 1.5, max_backoff)
-            finally:
-                self._connected = False
-                self._client = None
 
 
 mqtt_client = KavachMQTTClient()
 
 
 async def start_mqtt_client(app: Optional[FastAPI] = None) -> KavachMQTTClient:
-    """Start the global MQTT client subscriber."""
     await mqtt_client.start()
     return mqtt_client
 
 
 async def stop_mqtt_client(app: Optional[FastAPI] = None) -> None:
-    """Stop the global MQTT client subscriber."""
     await mqtt_client.stop()

@@ -12,6 +12,7 @@ Provides FastAPI dependencies for:
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
+from typing import Optional
 from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -23,7 +24,7 @@ from app.utils.security import decode_access_token
 # ============================================
 # OAuth2 scheme for JWT bearer tokens
 # ============================================
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 # ============================================
 # API Key header scheme
@@ -35,12 +36,13 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 # Dependency: Get current authenticated user
 # ============================================
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: Optional[str] = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     """
     Decode a JWT token and return the authenticated User model.
 
+    In DEBUG mode, automatically provides a default operator user if no token header is provided.
     Raises 401 if token is invalid, expired, or user is inactive/missing.
     """
     credentials_exception = HTTPException(
@@ -48,6 +50,24 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    if not token:
+        if settings.DEBUG:
+            try:
+                user = db.query(User).filter(User.username == "admin").first()
+                if user:
+                    return user
+            except Exception:
+                pass
+            return User(
+                id=UUID("00000000-0000-0000-0000-000000000001"),
+                username="admin_operator",
+                email="admin@kavachgrid.local",
+                full_name="KavachGrid System Admin",
+                role="admin",
+                is_active=True,
+            )
+        raise credentials_exception
 
     payload = decode_access_token(token)
     if payload is None:
@@ -62,7 +82,11 @@ async def get_current_user(
     except (ValueError, AttributeError):
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == user_id).first()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+    except Exception:
+        user = None
+
     if user is None:
         raise credentials_exception
 
