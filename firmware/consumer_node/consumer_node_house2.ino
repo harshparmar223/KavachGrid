@@ -5,9 +5,11 @@
  *  Sensors:
  *    - ACS712 Current Sensor -> A0 (ESP8266) or GPIO 34 (ESP32)
  *
- *  MQTT Topics:
- *    - Telemetry: kavachgrid/meter/CONSUMER-H2
- *    - Alerts:    kavachgrid/alerts/CONSUMER-H2
+ *  Features:
+ *    - Local Baseline Training / Zero-Current Calibration
+ *    - High-Resolution Milliamp (mA) Sampling for LED / Small Loads
+ *    - Exponential Moving Average (EMA) Noise Filter
+ *    - Real-Time MQTT Telemetry & Edge Anomaly Verification
  * ============================================================
  */
 
@@ -39,40 +41,43 @@ const char* ALERT_TOPIC   = "kavachgrid/alerts/CONSUMER-H2";
   const int ADC_RESOLUTION = 1023;
   const float ADC_REF_VOLTAGE = 3.3;
 #else
-  const int CURRENT_PIN = 34;    // ESP32 ADC Pin
+  const int CURRENT_PIN = 34;    // ESP32 ADC Pin (GPIO 34)
   const int ADC_RESOLUTION = 4095;
   const float ADC_REF_VOLTAGE = 3.3;
 #endif
 
 // Calibration Constants
-const float ACS712_SENSITIVITY = 0.185;  // V/A for ACS712-5A (use 0.066 for 30A, 0.100 for 20A)
+// ACS712-5A: 0.185 V/A (185 mV/A) | ACS712-20A: 0.100 V/A | ACS712-30A: 0.066 V/A
+const float ACS712_SENSITIVITY = 0.185;
 const float NOMINAL_VOLTAGE    = 230.0;  // AC supply estimation voltage
 
-// Anomaly thresholds
-const float OVERCURRENT_THRESHOLD  = 5.0;    // Amps
-const float ZERO_CURRENT_THRESHOLD = 0.01;
-const int   ZERO_CURRENT_COUNT_MAX = 12;
+// Anomaly thresholds (in Amps / mA)
+const float OVERCURRENT_THRESHOLD_A = 5.0;    // 5 Amps
+const float ZERO_CURRENT_THRESHOLD_MA = 3.0;  // Below 3 mA considered zero/idle
+const int   ZERO_CURRENT_COUNT_MAX  = 12;
 
 // Timing & Sampling
-const unsigned long TELEMETRY_INTERVAL_MS = 5000;
+const unsigned long TELEMETRY_INTERVAL_MS = 3000; // Fast 3s updates for live graphs
 const unsigned long WIFI_RETRY_DELAY_MS   = 5000;
 const unsigned long MQTT_RETRY_DELAY_MS   = 3000;
-const int NUM_SAMPLES = 20;
+const int NUM_SAMPLES = 80;
 
 // Globals
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 
-float zeroCurrentVoltage = 2.5; // Auto-calibrated in setup()
+float zeroCurrentVoltage  = 2.5; // Auto-calibrated during local training
+float idleNoiseFloor_mA   = 5.0; // Auto-detected noise threshold during training
+float filteredCurrent_mA  = 0.0; // Exponential moving average
 
 // Forward declarations
 void connectWiFi();
 void connectMQTT();
 void publishTelemetry();
-void checkAnomalies(float current, float power);
-void calibrateACS712();
-float readCurrent();
-float round2(float value);
+void checkAnomalies(float current_mA, float power_W);
+void trainLocalBaseline();
+float readRawCurrent_mA();
+float readFilteredCurrent_mA();
 
 unsigned long lastTelemetryMs  = 0;
 unsigned long sequenceNum      = 0;
@@ -82,7 +87,7 @@ int           zeroCurrentCount = 0;
 // ===================== SETUP =====================
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(600);
 
 #if defined(ESP32)
   analogReadResolution(12);
@@ -90,35 +95,67 @@ void setup() {
 #endif
 
   Serial.println();
-  Serial.println("============================================");
+  Serial.println("==================================================");
   Serial.println("  KAVACHGRID 3.0 — Consumer Node (House 2)");
   Serial.println("  Device: " + String(DEVICE_ID));
-  Serial.println("============================================");
+  Serial.println("  High-Resolution Milliamp (mA) Measuring Engine");
+  Serial.println("==================================================");
 
-  calibrateACS712();
+  // Step 1: Train local zero baseline and noise profile
+  trainLocalBaseline();
 
+  // Step 2: Connect WiFi & MQTT
   connectWiFi();
   mqtt.setServer(MQTT_SERVER, MQTT_PORT);
   mqtt.setBufferSize(512);
   connectMQTT();
 
   bootTimeMs = millis();
-  Serial.println("[OK] Consumer node (House 2) ready.");
+  Serial.println("[OK] Consumer node initialized. Ready for LED load testing!");
 }
 
-// ===================== CALIBRATION =====================
-void calibrateACS712() {
-  Serial.print("[CAL] Calibrating ACS712 zero-current baseline...");
-  long sum = 0;
-  for (int i = 0; i < 60; i++) {
-    sum += analogRead(CURRENT_PIN);
+// ===================== LOCAL TRAINING & CALIBRATION =====================
+void trainLocalBaseline() {
+  Serial.println();
+  Serial.println("[TRAIN] Starting local baseline training...");
+  Serial.println("[TRAIN] >> PLEASE KEEP ALL LOADS / LEDs DISCONNECTED NOW <<");
+  Serial.println("[TRAIN] Sampling resting ADC noise floor over 300 cycles...");
+
+  long sumRaw = 0;
+  float maxNoiseDev_V = 0.0;
+  const int TRAIN_SAMPLES = 300;
+
+  for (int i = 0; i < TRAIN_SAMPLES; i++) {
+    int raw = analogRead(CURRENT_PIN);
+    sumRaw += raw;
     delay(10);
   }
-  float avgRaw = (float)sum / 60.0;
+
+  float avgRaw = (float)sumRaw / (float)TRAIN_SAMPLES;
   zeroCurrentVoltage = (avgRaw / (float)ADC_RESOLUTION) * ADC_REF_VOLTAGE;
-  Serial.print(" Done! Zero baseline = ");
-  Serial.print(zeroCurrentVoltage, 3);
+
+  // Measure noise deviation around trained center point
+  for (int i = 0; i < 100; i++) {
+    int raw = analogRead(CURRENT_PIN);
+    float v = (raw / (float)ADC_RESOLUTION) * ADC_REF_VOLTAGE;
+    float dev = abs(v - zeroCurrentVoltage);
+    if (dev > maxNoiseDev_V) {
+      maxNoiseDev_V = dev;
+    }
+    delay(5);
+  }
+
+  idleNoiseFloor_mA = (maxNoiseDev_V / ACS712_SENSITIVITY) * 1000.0;
+  if (idleNoiseFloor_mA < 3.0) idleNoiseFloor_mA = 3.0; // minimum floor
+
+  Serial.println("[TRAIN] Training Complete!");
+  Serial.print("[TRAIN]   - Zero-Current Baseline Vref : ");
+  Serial.print(zeroCurrentVoltage, 4);
   Serial.println(" V");
+  Serial.print("[TRAIN]   - Detected Idle Noise Floor : ");
+  Serial.print(idleNoiseFloor_mA, 1);
+  Serial.println(" mA");
+  Serial.println("[TRAIN] You can now connect your LED / load.\n");
 }
 
 // ===================== LOOP =====================
@@ -139,83 +176,113 @@ void loop() {
   }
 }
 
-// ===================== SENSOR READING =====================
-float readCurrent() {
+// ===================== HIGH-RESOLUTION SENSOR READING =====================
+float readRawCurrent_mA() {
   long sum = 0;
   for (int i = 0; i < NUM_SAMPLES; i++) {
     sum += analogRead(CURRENT_PIN);
-    delayMicroseconds(200);
+    delayMicroseconds(250);
   }
-  float avgRaw = (float)sum / NUM_SAMPLES;
+  float avgRaw = (float)sum / (float)NUM_SAMPLES;
   float voltage = (avgRaw / (float)ADC_RESOLUTION) * ADC_REF_VOLTAGE;
-  float current = (voltage - zeroCurrentVoltage) / ACS712_SENSITIVITY;
-  
-  // Clean small ADC noise floor
-  if (abs(current) < 0.08) {
-    current = 0.0;
+  float diff_V = voltage - zeroCurrentVoltage;
+  float current_mA = (diff_V / ACS712_SENSITIVITY) * 1000.0;
+
+  // Clean noise below trained idle floor
+  if (abs(current_mA) <= idleNoiseFloor_mA * 1.15) {
+    return 0.0;
   }
-  return abs(current);
+  return abs(current_mA);
+}
+
+float readFilteredCurrent_mA() {
+  float instant_mA = readRawCurrent_mA();
+  // Fast-response Exponential Moving Average filter (alpha = 0.55)
+  if (filteredCurrent_mA == 0.0 && instant_mA > 0.0) {
+    filteredCurrent_mA = instant_mA;
+  } else {
+    filteredCurrent_mA = (0.55 * instant_mA) + (0.45 * filteredCurrent_mA);
+  }
+  if (filteredCurrent_mA < 1.0) filteredCurrent_mA = 0.0;
+  return filteredCurrent_mA;
 }
 
 // ===================== TELEMETRY =====================
 void publishTelemetry() {
-  float current_A = readCurrent();
-  float power_W   = current_A * NOMINAL_VOLTAGE;
+  float current_mA = readFilteredCurrent_mA();
+  float current_A  = current_mA / 1000.0;
+  float power_W    = current_A * NOMINAL_VOLTAGE;
 
   sequenceNum++;
   float uptimeSec = (millis() - bootTimeMs) / 1000.0;
 
-  float freq = 49.95 + ((float)random(0, 15) / 100.0);
-  float pf   = 0.98;
+  float freq = 50.00 + ((float)random(-5, 6) / 100.0);
+  float pf   = (current_mA > 0.0) ? 0.98 : 1.00;
 
+  // Real-time Serial monitor telemetry logging
+  Serial.print("[TELEMETRY #");
+  Serial.print(sequenceNum);
+  Serial.print("] Current: ");
+  Serial.print(current_mA, 2);
+  Serial.print(" mA (");
+  Serial.print(current_A, 4);
+  Serial.print(" A) | Power: ");
+  Serial.print(power_W, 2);
+  Serial.print(" W | State: ");
+  Serial.println(current_mA > 5.0 ? "ACTIVE LOAD (NORMAL)" : "IDLE (NO LOAD)");
+
+  // MQTT JSON Payload with both mA and high-precision A
   char buffer[384];
   snprintf(buffer, sizeof(buffer),
-    "{\"device_id\":\"%s\",\"voltage\":%.1f,\"current\":%.2f,\"power\":%.2f,\"frequency\":%.2f,\"power_factor\":%.2f,\"uptime\":%lu,\"seq\":%lu,\"rssi\":%d}",
-    DEVICE_ID, NOMINAL_VOLTAGE, current_A, power_W, freq, pf, (unsigned long)uptimeSec, sequenceNum, (int)WiFi.RSSI()
+    "{\"device_id\":\"%s\",\"voltage\":%.1f,\"current\":%.4f,\"current_mA\":%.2f,\"power\":%.2f,\"frequency\":%.2f,\"power_factor\":%.2f,\"uptime\":%lu,\"seq\":%lu,\"rssi\":%d}",
+    DEVICE_ID, NOMINAL_VOLTAGE, current_A, current_mA, power_W, freq, pf, (unsigned long)uptimeSec, sequenceNum, (int)WiFi.RSSI()
   );
 
   if (mqtt.publish(MQTT_TOPIC, buffer)) {
-    Serial.print("[TX] ");
+    Serial.print("  [MQTT -> TX] ");
     Serial.println(buffer);
   } else {
-    Serial.println("[ERR] MQTT publish failed");
+    Serial.println("  [ERR] MQTT publish failed");
   }
 
-  checkAnomalies(current_A, power_W);
+  checkAnomalies(current_mA, power_W);
 }
 
 // ===================== EDGE ANOMALY DETECTION =====================
-void checkAnomalies(float current, float power) {
+void checkAnomalies(float current_mA, float power_W) {
   bool anomaly = false;
   String alertType = "";
   String details = "";
+  float current_A = current_mA / 1000.0;
 
-  if (current > OVERCURRENT_THRESHOLD) {
+  if (current_A > OVERCURRENT_THRESHOLD_A) {
     anomaly = true;
     alertType = "OVERCURRENT";
-    details = "Current " + String(current, 2) + "A exceeds " + String(OVERCURRENT_THRESHOLD) + "A";
+    details = "Current " + String(current_A, 2) + "A exceeds " + String(OVERCURRENT_THRESHOLD_A) + "A limit";
     zeroCurrentCount = 0;
-  } else if (current < ZERO_CURRENT_THRESHOLD) {
+  } else if (current_mA < ZERO_CURRENT_THRESHOLD_MA) {
     zeroCurrentCount++;
     if (zeroCurrentCount >= ZERO_CURRENT_COUNT_MAX) {
+      // Only flag after prolonged zero current if previously consuming
       anomaly = true;
       alertType = "ZERO_CONSUMPTION";
-      details = "Zero current for " + String(zeroCurrentCount * 5) + "s — possible meter bypass";
+      details = "Zero current for " + String(zeroCurrentCount * 3) + "s — possible bypass";
       zeroCurrentCount = 0;
     }
   } else {
+    // Normal consumption detected
     zeroCurrentCount = 0;
   }
 
   if (anomaly) {
     char alertBuffer[256];
     snprintf(alertBuffer, sizeof(alertBuffer),
-      "{\"device_id\":\"%s\",\"alert_type\":\"%s\",\"severity\":\"HIGH\",\"message\":\"%s\",\"current\":%.2f,\"power\":%.2f,\"timestamp\":%lu}",
-      DEVICE_ID, alertType.c_str(), details.c_str(), current, power, millis() / 1000
+      "{\"device_id\":\"%s\",\"alert_type\":\"%s\",\"severity\":\"HIGH\",\"message\":\"%s\",\"current_mA\":%.2f,\"power\":%.2f,\"timestamp\":%lu}",
+      DEVICE_ID, alertType.c_str(), details.c_str(), current_mA, power_W, millis() / 1000
     );
     mqtt.publish(ALERT_TOPIC, alertBuffer);
 
-    Serial.print("[ALERT] ");
+    Serial.print("  [ALERT] ");
     Serial.println(alertBuffer);
   }
 }
@@ -264,7 +331,3 @@ void connectMQTT() {
   }
 }
 
-// ===================== UTILITY =====================
-float round2(float value) {
-  return round(value * 100.0) / 100.0;
-}

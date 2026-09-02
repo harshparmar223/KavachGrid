@@ -85,26 +85,123 @@ export default function HomePage() {
     }
   }, [latestAlert]);
 
-  // Handle incoming live telemetry over WebSocket
+  // Helper to convert power to kW consistently
+  const toKw = (p: number | undefined | null): number => {
+    if (p === undefined || p === null) return 0;
+    const num = Number(p);
+    if (isNaN(num)) return 0;
+    // Sensor sends Watts (e.g. 238W - 10000W). If > 20.0, convert to kW; if <= 20.0, it's already in kW (e.g. 9.3 kW)
+    return num > 20.0 ? num / 1000.0 : num;
+  };
+
+  // Compile a single energy balance point from the current telemetry map
+  const computeEnergyBalancePoint = (map: Record<string, Telemetry>, timestamp?: string) => {
+    const now = Date.now();
+
+    // Check if live hardware feeder is actively transmitting in current session (within last 2 minutes)
+    const feederTele = map['FEEDER-01'] || map['feeder-01'];
+    const isFeederLive = feederTele && (now - new Date(feederTele.timestamp || feederTele.received_at || 0).getTime() < 120000);
+
+    const hwConsumerKeys = ['CONSUMER-H1', 'CONSUMER-H2', 'CONSUMER-H3', 'CONSUMER-H4'];
+    const mockConsumerKeys = ['meter_101', 'meter_102', 'meter_103', 'meter_104'];
+
+    // Find active live consumer nodes transmitting within the last 2 minutes
+    const activeLiveConsumers = hwConsumerKeys.filter((k) => {
+      const dev = map[k] || map[k.toLowerCase()] || map[k.toUpperCase()];
+      if (!dev) return false;
+      const ageMs = now - new Date(dev.timestamp || dev.received_at || 0).getTime();
+      return ageMs < 120000;
+    });
+
+    const countedDevices = new Set<string>();
+    let totalConsumerKw = 0;
+
+    if (activeLiveConsumers.length > 0) {
+      // ONLY sum the currently active live hardware nodes (e.g. House 1, House 2)
+      for (const key of activeLiveConsumers) {
+        const dev = map[key] || map[key.toLowerCase()] || map[key.toUpperCase()];
+        if (dev && !countedDevices.has(dev.device_id.toUpperCase())) {
+          countedDevices.add(dev.device_id.toUpperCase());
+          totalConsumerKw += toKw(dev.power);
+        }
+      }
+    } else {
+      // If no live hardware is active, check fallback mock devices
+      for (const key of mockConsumerKeys) {
+        const dev = map[key] || map[key.toLowerCase()] || map[key.toUpperCase()];
+        if (dev && !countedDevices.has(dev.device_id.toUpperCase())) {
+          countedDevices.add(dev.device_id.toUpperCase());
+          totalConsumerKw += toKw(dev.power);
+        }
+      }
+      if (totalConsumerKw === 0) totalConsumerKw = 0.080;
+    }
+
+    // Feeder input power:
+    // If real Feeder node is live, use it. Otherwise, compute feeder power as consumer load + distribution technical loss.
+    let feederKw = 0;
+    if (isFeederLive && feederTele) {
+      feederKw = toKw(feederTele.power);
+    } else if (activeLiveConsumers.length > 0) {
+      feederKw = totalConsumerKw * 1.05 + 0.005;
+    } else {
+      const fallbackFeeder = map['feeder_01'] || map['FEEDER_01'];
+      feederKw = fallbackFeeder ? toKw(fallbackFeeder.power) : totalConsumerKw * 1.05 + 0.005;
+    }
+
+    const lossKw = Math.max(0, feederKw - totalConsumerKw);
+
+    return {
+      timestamp: timestamp || new Date().toISOString(),
+      feederPower: Number(feederKw.toFixed(3)),
+      consumerPower: Number(totalConsumerKw.toFixed(3)),
+      loss: Number(lossKw.toFixed(3)),
+    };
+  };
+
+  // Start with 15 baseline points so the chart renders instantly
+  const [chartData, setChartData] = useState<Array<{
+    timestamp: string;
+    feederPower: number;
+    consumerPower: number;
+    loss: number;
+  }>>(() => {
+    const now = Date.now();
+    return Array.from({ length: 15 }).map((_, i) => ({
+      timestamp: new Date(now - (14 - i) * 3000).toISOString(),
+      feederPower: 0.100,
+      consumerPower: 0.080,
+      loss: 0.020,
+    }));
+  });
+
+  // Handle incoming live telemetry over WebSocket and update real-time chart
   useEffect(() => {
     if (lastTelemetry) {
-      setTelemetryMap((prev) => {
-        const key = lastTelemetry.device_id;
-        const aliases: Record<string, Telemetry> = {
-          [key]: lastTelemetry,
-          [key.toUpperCase()]: lastTelemetry,
-          [key.toLowerCase()]: lastTelemetry,
-        };
-        if (key === 'CONSUMER-01' || key === 'meter_101' || key.toLowerCase().includes('house1')) {
-          aliases['CONSUMER-H1'] = lastTelemetry;
-        }
-        if (key === 'CONSUMER-02' || key === 'meter_102' || key.toLowerCase().includes('house2')) {
-          aliases['CONSUMER-H2'] = lastTelemetry;
-        }
-        return {
-          ...prev,
-          ...aliases,
-        };
+      const key = lastTelemetry.device_id;
+      const updatedMap: Record<string, Telemetry> = {
+        ...telemetryMap,
+        [key]: lastTelemetry,
+        [key.toUpperCase()]: lastTelemetry,
+        [key.toLowerCase()]: lastTelemetry,
+      };
+      if (key === 'CONSUMER-01' || key === 'meter_101' || key.toLowerCase().includes('house1')) {
+        updatedMap['CONSUMER-H1'] = lastTelemetry;
+      }
+      if (key === 'CONSUMER-02' || key === 'meter_102' || key.toLowerCase().includes('house2')) {
+        updatedMap['CONSUMER-H2'] = lastTelemetry;
+      }
+      if (key === 'CONSUMER-03' || key === 'meter_103' || key.toLowerCase().includes('house3')) {
+        updatedMap['CONSUMER-H3'] = lastTelemetry;
+      }
+
+      setTelemetryMap(updatedMap);
+
+      // Append new real-time point to chartData
+      const newPoint = computeEnergyBalancePoint(updatedMap, lastTelemetry.timestamp || new Date().toISOString());
+      setChartData((prev) => {
+        const base = prev.length > 0 ? prev : [];
+        return [...base.slice(-29), newPoint];
       });
     }
   }, [lastTelemetry]);
@@ -117,54 +214,23 @@ export default function HomePage() {
     );
   };
 
-  // Compile energy balance history chart data
-  const compileChartData = () => {
-    const fHist = feederHistory && feederHistory.length > 0 ? feederHistory : mockTelemetry['feeder_01'] || [];
-    const m1Hist = m101History && m101History.length > 0 ? m101History : mockTelemetry['meter_101'] || [];
-    const m2Hist = m102History && m102History.length > 0 ? m102History : mockTelemetry['meter_102'] || [];
-    const m3Hist = m103History && m103History.length > 0 ? m103History : mockTelemetry['meter_103'] || [];
-
-    const dataLength = Math.min(
-      fHist.length,
-      m1Hist.length,
-      m2Hist.length,
-      m3Hist.length
-    );
-
-    if (dataLength === 0) return [];
-
-    return Array.from({ length: dataLength }).map((_, i) => {
-      const feeder = fHist[i];
-      const m101 = m1Hist[i];
-      const m102 = m2Hist[i];
-      const m103 = m3Hist[i];
-
-      // Sum of consumers
-      const consumersSum = Number((m101.power + m102.power + m103.power).toFixed(2));
-      const feederPower = Number(feeder.power.toFixed(2));
-      const loss = Number(Math.max(0, feederPower - consumersSum).toFixed(2));
-
-      return {
-        timestamp: feeder.timestamp,
-        feederPower,
-        consumerPower: consumersSum,
-        loss,
-      };
-    });
-  };
-
-  const chartData = compileChartData();
-
-  // Metrics calculations
-  const displayDevices = devices && devices.length > 0 ? devices : mockDevices;
+  // Metrics calculations (filter out localization branch sensors from overview meters)
+  const allDevices = devices && devices.length > 0 ? devices : mockDevices;
+  const displayDevices = allDevices.filter(
+    (d) =>
+      d.device_type !== 'localization' &&
+      !d.device_id.toUpperCase().includes('LOC-') &&
+      !d.device_id.toUpperCase().includes('ZONE')
+  );
   const onlineCount = displayDevices.filter((d) => deviceStatuses[d.device_id] === 'online' || d.status === 'online').length;
   const totalCount = displayDevices.length;
 
   // Calculate current power draw and imbalance
-  const currentFeederPower = chartData.length > 0 ? chartData[chartData.length - 1].feederPower : 18.5;
-  const currentConsumerPower = chartData.length > 0 ? chartData[chartData.length - 1].consumerPower : 12.8;
-  const currentLoss = Number(Math.max(0, currentFeederPower - currentConsumerPower).toFixed(2));
-  const currentLossPercent = Number(((currentLoss / currentFeederPower) * 100).toFixed(1));
+  const latestPoint = chartData.length > 0 ? chartData[chartData.length - 1] : null;
+  const currentFeederPower = latestPoint ? latestPoint.feederPower : 3.36;
+  const currentConsumerPower = latestPoint ? latestPoint.consumerPower : 2.45;
+  const currentLoss = Number(Math.max(0, currentFeederPower - currentConsumerPower).toFixed(3));
+  const currentLossPercent = currentFeederPower > 0 ? Number(((currentLoss / currentFeederPower) * 100).toFixed(1)) : 0;
 
   return (
     <Box sx={{ flexGrow: 1 }}>
@@ -304,7 +370,7 @@ export default function HomePage() {
                     <TableRow>
                       <TableCell>Device ID</TableCell>
                       <TableCell align="right">Voltage (V)</TableCell>
-                      <TableCell align="right">Current (A)</TableCell>
+                      <TableCell align="right">Current</TableCell>
                       <TableCell align="right">Power (kW)</TableCell>
                       <TableCell align="right">Frequency (Hz)</TableCell>
                       <TableCell align="right">Power Factor</TableCell>
@@ -323,10 +389,14 @@ export default function HomePage() {
                       const baseData = liveData || (mockReadings && mockReadings.length > 0 ? mockReadings[mockReadings.length - 1] : null);
 
                       const v = baseData ? Number(baseData.voltage).toFixed(1) : '230.0';
-                      const i = baseData ? Number(baseData.current).toFixed(2) : '0.00';
+                      const rawCurrent = baseData ? Number(baseData.current) : 0.0;
+                      // Display in mA for small loads (< 1.0A) or in A for larger loads
+                      const iDisplay = rawCurrent > 0 && rawCurrent < 1.0 
+                        ? `${(rawCurrent * 1000).toFixed(1)} mA` 
+                        : `${rawCurrent.toFixed(2)} A`;
                       const rawP = baseData ? Number(baseData.power) : 0.0;
-                      // Sensor sends Watts (e.g. 29.48 W). If >= 5.0 W, convert to kW.
-                      const pKw = rawP >= 5.0 ? (rawP / 1000.0).toFixed(3) : (rawP > 0 ? (rawP / 1000.0).toFixed(3) : '0.000');
+                      // Sensor sends Watts if > 20.0 (e.g. 238 W -> 0.238 kW). Otherwise already in kW (e.g. 9.3 kW).
+                      const pKw = rawP > 20.0 ? (rawP / 1000.0).toFixed(3) : (rawP > 0 ? rawP.toFixed(3) : '0.000');
                       const freq = baseData?.frequency ? Number(baseData.frequency).toFixed(2) : '50.00';
                       const pf = baseData?.power_factor ? Number(baseData.power_factor).toFixed(2) : '0.98';
                       const trust = baseData?.trust_score !== undefined ? Number(baseData.trust_score).toFixed(0) : '99';
@@ -338,7 +408,7 @@ export default function HomePage() {
                             {device.device_id}
                           </TableCell>
                           <TableCell align="right">{v}</TableCell>
-                          <TableCell align="right">{i}</TableCell>
+                          <TableCell align="right">{iDisplay}</TableCell>
                           <TableCell align="right">{pKw}</TableCell>
                           <TableCell align="right">{freq}</TableCell>
                           <TableCell align="right">{pf}</TableCell>
@@ -350,7 +420,7 @@ export default function HomePage() {
                               sx={{ fontWeight: 700 }}
                             />
                           </TableCell>
-                          <TableCell align="right">{timeStr}</TableCell>
+                          <TableCell align="right" suppressHydrationWarning>{timeStr}</TableCell>
                         </TableRow>
                       );
                     })}

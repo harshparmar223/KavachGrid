@@ -92,7 +92,12 @@ export default function AlertCard({ alert, onAcknowledge }: AlertCardProps) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
             <TimeIcon sx={{ fontSize: 16 }} />
             <Typography variant="caption" sx={{ fontWeight: 600 }} suppressHydrationWarning>
-              {new Date(alert.created_at).toLocaleString()}
+              {(() => {
+                const dStr = alert.created_at || (alert as any).timestamp;
+                if (!dStr) return 'Just now';
+                const d = new Date(dStr);
+                return isNaN(d.getTime()) ? 'Just now' : d.toLocaleTimeString();
+              })()}
             </Typography>
             {alert.device_id && (
               <Typography variant="caption" sx={{ ml: 1, color: 'primary.main', fontWeight: 700 }}>
