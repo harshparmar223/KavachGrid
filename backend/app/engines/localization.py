@@ -467,21 +467,44 @@ class LocalizationEngine:
     def _persist_localization(
         self, db: Session, result: LocalizationAnalysisResult
     ) -> None:
-        """Save localization result to the database."""
+        """Save or update localization result in the database."""
         try:
             suspect_devices = [
                 s.to_suspect_device() for s in result.suspects
             ]
 
-            loc_data = LocalizationCreate(
-                zone_id=result.zone_id,
-                confidence=result.confidence,
-                priority=result.priority,
-                estimated_loss_kwh=result.estimated_loss_kwh,
-                suspect_devices=suspect_devices,
+            suspect_devices_json = [
+                sd.model_dump() for sd in suspect_devices
+            ]
+
+            # Check if an existing pending localization record exists for this zone
+            existing = (
+                db.query(LocalizationResult)
+                .filter(
+                    LocalizationResult.zone_id == result.zone_id,
+                    LocalizationResult.status == "pending",
+                )
+                .order_by(LocalizationResult.created_at.desc())
+                .first()
             )
 
-            localization_service.create_result(db, loc_data)
+            if existing:
+                existing.confidence = result.confidence
+                existing.priority = result.priority
+                existing.estimated_loss_kwh = result.estimated_loss_kwh
+                existing.suspect_devices = suspect_devices_json
+                existing.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                db.refresh(existing)
+            else:
+                loc_data = LocalizationCreate(
+                    zone_id=result.zone_id,
+                    confidence=result.confidence,
+                    priority=result.priority,
+                    estimated_loss_kwh=result.estimated_loss_kwh,
+                    suspect_devices=suspect_devices,
+                )
+                localization_service.create_result(db, loc_data)
 
         except Exception as e:
             logger.error(

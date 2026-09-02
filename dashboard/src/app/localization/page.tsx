@@ -120,9 +120,17 @@ export default function LocalizationPage() {
     return r.status === statusFilter;
   });
 
-  const totalLoss = results.reduce((sum, r) => sum + (r.estimated_loss_kwh || 0), 0);
-  const criticalCount = results.filter((r) => r.priority === 'critical' || r.priority === 'high').length;
-  const pendingCount = results.filter((r) => r.status === 'pending').length;
+  // Keep only the latest scan per unique zone_id for summary metrics
+  const uniqueZoneResults = Object.values(
+    results.reduce((acc, curr) => {
+      if (!acc[curr.zone_id]) acc[curr.zone_id] = curr;
+      return acc;
+    }, {} as Record<string, LocalizationResult>)
+  );
+
+  const totalLoss = uniqueZoneResults.reduce((sum, r) => sum + (r.estimated_loss_kwh || 0), 0);
+  const criticalCount = uniqueZoneResults.filter((r) => r.priority === 'critical' || r.priority === 'high').length;
+  const pendingCount = uniqueZoneResults.filter((r) => r.status === 'pending').length;
 
   return (
     <Box sx={{ flexGrow: 1 }}>
@@ -171,7 +179,7 @@ export default function LocalizationPage() {
               LOCALIZED DISTRIBUTION ZONES
             </Typography>
             <Typography variant="h5" sx={{ fontWeight: 800, color: themeConfig.primary, mt: 0.5 }}>
-              {results.length} Segments
+              {uniqueZoneResults.length} Segments
             </Typography>
           </Card>
         </Grid>
