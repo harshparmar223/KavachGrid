@@ -29,6 +29,7 @@ import { api } from '@/lib/api';
 import { useApi } from '@/hooks/useApi';
 import { Device, Telemetry } from '@/lib/types';
 import { themeConfig } from '@/theme/theme';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 export default function DevicesPage() {
   const { data: devices, loading, mutate } = useApi(api.getDevices);
@@ -37,10 +38,31 @@ export default function DevicesPage() {
   const [deviceTelemetry, setDeviceTelemetry] = useState<Telemetry[]>([]);
   const [telemetryLoading, setTelemetryLoading] = useState<boolean>(false);
 
+  const { lastTelemetry, deviceStatuses } = useWebSocket();
+
   // Filters state
   const [search, setSearch] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  // Live telemetry append via WebSocket
+  useEffect(() => {
+    if (lastTelemetry && selectedDeviceId) {
+      const target = selectedDeviceId.toUpperCase();
+      const incoming = lastTelemetry.device_id.toUpperCase();
+      const isMatch = target === incoming ||
+        (target === 'CONSUMER-H1' && incoming === 'METER_101') ||
+        (target === 'CONSUMER-H2' && incoming === 'METER_102') ||
+        (target === 'FEEDER-01' && incoming === 'FEEDER_01');
+
+      if (isMatch) {
+        setDeviceTelemetry(prev => {
+          const base = prev || [];
+          return [...base.slice(-29), lastTelemetry];
+        });
+      }
+    }
+  }, [lastTelemetry, selectedDeviceId]);
 
   // Trigger telemetry fetch when device selection changes
   useEffect(() => {

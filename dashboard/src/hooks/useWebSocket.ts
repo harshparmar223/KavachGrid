@@ -3,7 +3,15 @@ import { useState, useEffect, useRef } from 'react';
 import { Telemetry, Alert, RiskScore, Device } from '@/lib/types';
 import { mockDevices, mockTelemetry, mockAlerts, mockRiskRanking } from '@/lib/api';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws/dashboard';
+const getWsUrl = () => {
+  if (typeof window === 'undefined') return 'ws://localhost:8000/ws/dashboard';
+  const customUrl = process.env.NEXT_PUBLIC_WS_URL;
+  if (customUrl) {
+    return customUrl.endsWith('/ws') ? `${customUrl}/dashboard` : customUrl;
+  }
+  const host = window.location.hostname || 'localhost';
+  return `ws://${host}:8000/ws/dashboard`;
+};
 
 export function useWebSocket() {
   const [connected, setConnected] = useState(false);
@@ -26,11 +34,12 @@ export function useWebSocket() {
     // Setup real WebSocket connection
     const connect = () => {
       try {
-        const ws = new WebSocket(WS_URL);
+        const url = getWsUrl();
+        const ws = new WebSocket(url);
         wsRef.current = ws;
 
         ws.onopen = () => {
-          console.log('⚡ Connected to KAVACHGRID WS');
+          console.log(`⚡ Connected to KAVACHGRID WS at ${url}`);
           setConnected(true);
           if (reconnectTimeoutRef.current) {
             clearTimeout(reconnectTimeoutRef.current);
@@ -43,9 +52,19 @@ export function useWebSocket() {
             const { event: eventName, data } = message;
 
             switch (eventName) {
-              case 'telemetry_update':
-                setLastTelemetry(data as Telemetry);
+              case 'telemetry_update': {
+                const tel = data as Telemetry;
+                setLastTelemetry(tel);
+                if (tel?.device_id) {
+                  setDeviceStatuses(prev => ({
+                    ...prev,
+                    [tel.device_id]: 'online',
+                    [tel.device_id.toUpperCase()]: 'online',
+                    [tel.device_id.toLowerCase()]: 'online',
+                  }));
+                }
                 break;
+              }
               case 'alert_created':
                 setLatestAlert(data as Alert);
                 break;

@@ -185,14 +185,25 @@ export default function HomePage() {
         [key.toUpperCase()]: lastTelemetry,
         [key.toLowerCase()]: lastTelemetry,
       };
-      if (key === 'CONSUMER-01' || key === 'meter_101' || key.toLowerCase().includes('house1')) {
+      if (key === 'CONSUMER-H1' || key === 'CONSUMER-01' || key === 'meter_101' || key.toLowerCase().includes('house1')) {
         updatedMap['CONSUMER-H1'] = lastTelemetry;
+        updatedMap['CONSUMER-01'] = lastTelemetry;
+        updatedMap['meter_101'] = lastTelemetry;
       }
-      if (key === 'CONSUMER-02' || key === 'meter_102' || key.toLowerCase().includes('house2')) {
+      if (key === 'CONSUMER-H2' || key === 'CONSUMER-02' || key === 'meter_102' || key.toLowerCase().includes('house2')) {
         updatedMap['CONSUMER-H2'] = lastTelemetry;
+        updatedMap['CONSUMER-02'] = lastTelemetry;
+        updatedMap['meter_102'] = lastTelemetry;
       }
-      if (key === 'CONSUMER-03' || key === 'meter_103' || key.toLowerCase().includes('house3')) {
+      if (key === 'CONSUMER-H3' || key === 'CONSUMER-03' || key === 'meter_103' || key.toLowerCase().includes('house3')) {
         updatedMap['CONSUMER-H3'] = lastTelemetry;
+        updatedMap['CONSUMER-03'] = lastTelemetry;
+        updatedMap['meter_103'] = lastTelemetry;
+      }
+      if (key === 'FEEDER-01' || key === 'FEEDER-1' || key === 'feeder_01') {
+        updatedMap['FEEDER-01'] = lastTelemetry;
+        updatedMap['FEEDER-1'] = lastTelemetry;
+        updatedMap['feeder_01'] = lastTelemetry;
       }
 
       setTelemetryMap(updatedMap);

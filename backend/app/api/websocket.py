@@ -112,6 +112,7 @@ async def broadcast_update(
     await ws_manager.broadcast(message)
 
 
+@router.websocket("/ws")
 @router.websocket("/ws/dashboard")
 async def websocket_dashboard(
     websocket: WebSocket,

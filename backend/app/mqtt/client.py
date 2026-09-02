@@ -71,8 +71,9 @@ class KavachMQTTClient:
             "last_error": self.last_error,
         }
 
-    def _on_connect(self, client, userdata, flags, rc, properties=None):
-        if rc == 0:
+    def _on_connect(self, client, userdata, flags, rc=0, *args, **kwargs):
+        rc_code = getattr(rc, "value", rc) if rc is not None else 0
+        if rc_code == 0 or rc == 0:
             self._connected = True
             self.last_connected_at = datetime.now(timezone.utc)
             self.last_error = None
@@ -84,10 +85,9 @@ class KavachMQTTClient:
             self.last_error = f"Connection failed with code {rc}"
             logger.error(f"❌ MQTT Connection failed with code {rc}")
 
-    def _on_disconnect(self, client, userdata, rc, properties=None):
+    def _on_disconnect(self, client, userdata, *args, **kwargs):
         self._connected = False
-        if rc != 0:
-            logger.warning(f"⚠️ Unexpected MQTT disconnect (rc={rc}). Auto-reconnecting...")
+        logger.warning("⚠️ MQTT disconnected. Auto-reconnecting...")
 
     def _on_message(self, client, userdata, msg):
         self.messages_received += 1
@@ -97,18 +97,7 @@ class KavachMQTTClient:
 
         logger.info(f"📥 MQTT Packet on {topic_str}: {payload_raw[:80]}")
 
-        # 1. Process with business logic / DB
-        try:
-            result = route_and_process_message(topic_str, payload_raw)
-            if result.get("status") in ("success", "unhandled"):
-                self.messages_processed_ok += 1
-            else:
-                self.messages_failed += 1
-        except Exception as e:
-            self.messages_failed += 1
-            logger.error(f"Error processing MQTT message: {e}")
-
-        # 2. Push to WebSocket clients on FastAPI event loop
+        # 1. Immediate Push to WebSocket clients on FastAPI event loop
         if self._loop and self._loop.is_running():
             try:
                 if isinstance(payload_raw, bytes):
@@ -124,13 +113,24 @@ class KavachMQTTClient:
                         dev_id = "CONSUMER-H1"
                     elif dev_id in ("CONSUMER-02", "CONSUMER_02", "METER-02", "METER_102", "HOUSE2", "H2", "HOUSE-2"):
                         dev_id = "CONSUMER-H2"
+                    elif dev_id in ("CONSUMER-03", "CONSUMER_03", "METER-03", "METER_103", "HOUSE3", "H3", "HOUSE-3"):
+                        dev_id = "CONSUMER-H3"
+                    elif dev_id in ("CONSUMER-04", "CONSUMER_04", "METER-04", "METER_104", "HOUSE4", "H4", "HOUSE-4"):
+                        dev_id = "CONSUMER-H4"
                     elif dev_id in ("FEEDER-1", "FEEDER_01", "FEEDER"):
                         dev_id = "FEEDER-01"
                     
                     if "feeder" in topic_str or "meter" in topic_str or "consumer" in topic_str or "localization" in topic_str:
                         v = float(p_data.get("voltage") or p_data.get("v") or 230.0)
-                        c = float(p_data.get("current") or p_data.get("i") or 0.0)
-                        p = p_data.get("power") or p_data.get("p") or p_data.get("w")
+                        raw_c = p_data.get("current") or p_data.get("current_a") or p_data.get("i")
+                        if raw_c is not None:
+                            c = float(raw_c)
+                        elif p_data.get("current_mA") is not None:
+                            c = float(p_data.get("current_mA")) / 1000.0
+                        else:
+                            c = 0.0
+
+                        p = p_data.get("power") or p_data.get("power_w") or p_data.get("p") or p_data.get("w")
                         if p is None:
                             p = v * c
                         else:
@@ -161,6 +161,17 @@ class KavachMQTTClient:
             except Exception as ws_err:
                 logger.debug(f"WS push error: {ws_err}")
 
+        # 2. Process with business logic / DB
+        try:
+            result = route_and_process_message(topic_str, payload_raw)
+            if result.get("status") in ("success", "unhandled"):
+                self.messages_processed_ok += 1
+            else:
+                self.messages_failed += 1
+        except Exception as e:
+            self.messages_failed += 1
+            logger.error(f"Error processing MQTT message: {e}")
+
     async def start(self) -> None:
         """Start the background MQTT client loop."""
         try:
@@ -177,10 +188,15 @@ class KavachMQTTClient:
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
 
+        # Use 127.0.0.1 on Windows to prevent IPv6 ::1 resolution failures
+        broker_host = "127.0.0.1" if self.host in ("localhost", "0.0.0.0") else self.host
+        self.host = broker_host
+
         try:
-            self._client.connect(self.host, self.port, 60)
+            self._client.reconnect_delay_set(min_delay=1, max_delay=5)
+            self._client.connect(broker_host, self.port, 60)
             self._client.loop_start()
-            logger.info(f"📡 MQTT client loop started for {self.host}:{self.port}")
+            logger.info(f"📡 MQTT client loop started for {broker_host}:{self.port}")
         except Exception as e:
             self.last_error = str(e)
             logger.error(f"❌ Failed to connect to MQTT Broker: {e}")
@@ -230,3 +246,4 @@ async def start_mqtt_client(app: Optional[FastAPI] = None) -> KavachMQTTClient:
 
 async def stop_mqtt_client(app: Optional[FastAPI] = None) -> None:
     await mqtt_client.stop()
+
