@@ -192,6 +192,19 @@ class KavachMQTTClient:
         broker_host = "127.0.0.1" if self.host in ("localhost", "0.0.0.0") else self.host
         self.host = broker_host
 
+        # Configure Authentication if provided
+        if self.username and self.password:
+            self._client.username_pw_set(self.username, self.password)
+
+        # Configure TLS for HiveMQ Cloud or port 8883
+        if int(self.port) == 8883 or "hivemq" in str(broker_host).lower():
+            import ssl
+            try:
+                self._client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+                logger.info(f"🔒 TLS encryption enabled for MQTT broker {broker_host}:{self.port}")
+            except Exception as tls_err:
+                logger.warning(f"TLS config warning: {tls_err}")
+
         try:
             self._client.reconnect_delay_set(min_delay=1, max_delay=5)
             self._client.connect(broker_host, self.port, 60)
